@@ -373,7 +373,7 @@ class Equinenetwork_Gam_V2_Widget extends \Elementor\Widget_Base {
 	protected function content_template() {
 		$presets     = self::presets();
 		$labels_json  = wp_json_encode( array_map( function( $p ) { return $p['label']; }, $presets ) );
-		$dims_json    = wp_json_encode( array_map( array( __CLASS__, 'preset_box' ), $presets ) );
+		$dims_json    = wp_json_encode( array_map( function( $p ) { return self::preset_box( $p['desktop'] ); }, $presets ) );
 		?>
 		<#
 		var presetLabels = <?php echo $labels_json; ?>;

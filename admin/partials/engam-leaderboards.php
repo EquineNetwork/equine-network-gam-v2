@@ -28,7 +28,7 @@ if ( isset( $_POST['engam_v2_lb_nonce'] ) && wp_verify_nonce( sanitize_text_fiel
             'padding_right'  => max( 0, intval( $_POST['engam_lb_padding_right']  ?? 0 ) ),
             'padding_bottom' => max( 0, intval( $_POST['engam_lb_padding_bottom'] ?? 0 ) ),
             'padding_left'   => max( 0, intval( $_POST['engam_lb_padding_left']   ?? 0 ) ),
-            'active'   => isset( $_POST['engam_lb_active'] ),
+            'active'   => $is_new ? true : ( ! empty( $leaderboards[ array_search( $lb_id, array_column( $leaderboards, 'id' ) ) ]['active'] ) ),
         );
 
         if ( $is_new ) {
@@ -313,18 +313,6 @@ if ( $edit_id ) :
     });
 })();
 </script>
-
-        <!-- ACTIVE + SAVE -->
-        <div class="eg-form-section">
-            <div class="eg-settings-field">
-                <label class="eg-toggle">
-                    <input type="checkbox" name="engam_lb_active" value="1" <?php checked( ! empty( $f['active'] ) ); ?>>
-                    <span class="eg-toggle-track"><span class="eg-toggle-thumb"></span></span>
-                    Leaderboard active
-                </label>
-                <p class="eg-hint">When off, this slot is not rendered on any page.</p>
-            </div>
-        </div>
 
         <div class="eg-form-section" style="border-top:1px solid #deded8;display:flex;gap:10px;align-items:center">
             <button type="submit" class="eg-btn" style="padding:14px 32px;font-size:14px"><?php echo $is_new ? 'Create Leaderboard' : 'Save Leaderboard'; ?></button>
