@@ -92,8 +92,7 @@ if ( $kit_id ) {
     }
 }
 
-$takeover_conflict = Equinenetwork_Gam_V2_Takeover::has_active_wrap() &&
-    count( array_filter( $leaderboards, function( $lb ) { return ! empty( $lb['active'] ); } ) ) > 0;
+$takeover_conflict = false; // Leaderboards always display regardless of active takeovers.
 
 include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 ?>
@@ -118,11 +117,6 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 <div class="eg-notice"><?php echo esc_html( $notice ); ?></div>
 <?php endif; ?>
 
-<?php if ( $takeover_conflict ) : ?>
-<div class="eg-notice" style="background:#fff3cd;color:#7a5c00;border-left-color:#f0ad4e;">
-    <strong>Conflict:</strong> A Wrap Takeover is currently active. Leaderboards will not display until it is deactivated or expires. (Mastheads do not affect leaderboards.)
-</div>
-<?php endif; ?>
 
 <!-- LIST -->
 <div class="eg-card" style="margin-top:18px;margin-bottom:18px">
@@ -280,27 +274,35 @@ if ( $edit_id ) :
                     </div>
                     <div style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-left:4px">
                         <span style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#777">Link</span>
-                        <button type="button" id="engam-lb-pad-link" title="Link all padding values"
-                            style="width:38px;height:46px;border:2px solid #bbb;background:#fff;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;color:#555">
-                            &#128274;
+                        <button type="button" id="engam-lb-pad-link" title="Padding linked — click to unlink"
+                            style="width:38px;height:46px;border:2px solid #111;background:#111;cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="5" y="11" width="14" height="10" rx="2" fill="white"/>
+                                <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+                            </svg>
                         </button>
                     </div>
                 </div>
-                <p class="eg-hint">Click the lock to link all sides — changing one updates all.</p>
+                <p class="eg-hint" id="engam-lb-pad-hint">Padding is linked — changing one side updates all.</p>
             </div>
         </div>
 <script>
 (function(){
-    var linked = false;
+    var linked = true;
     var btn = document.getElementById('engam-lb-pad-link');
     var inputs = document.querySelectorAll('.engam-lb-pad');
+    var hint = document.getElementById('engam-lb-pad-hint');
     if(!btn||!inputs.length) return;
+    var svgLocked = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="11" width="14" height="10" rx="2" fill="white"/><path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="white" stroke-width="2.2" stroke-linecap="round"/></svg>';
+    var svgUnlocked = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="11" width="14" height="10" rx="2" fill="white"/><path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#aaa" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="4 3"/></svg>';
     function setLinkState(on){
         linked = on;
-        btn.style.borderColor = on ? '#129b6f' : '#bbb';
-        btn.style.color = on ? '#129b6f' : '#555';
-        btn.innerHTML = on ? '&#128275;' : '&#128274;';
+        btn.style.background = on ? '#111' : '#fff';
+        btn.style.borderColor = on ? '#111' : '#bbb';
+        btn.innerHTML = on ? svgLocked : svgUnlocked;
+        if(hint) hint.textContent = on ? 'Padding is linked — changing one side updates all.' : 'Click the lock to link all sides.';
     }
+    setLinkState(true);
     btn.addEventListener('click', function(){ setLinkState(!linked); });
     inputs.forEach(function(inp){
         inp.addEventListener('input', function(){

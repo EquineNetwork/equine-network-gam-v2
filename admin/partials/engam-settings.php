@@ -1,16 +1,18 @@
 <?php if ( ! defined( 'WPINC' ) ) die;
 
-$gam_id          = get_option( 'equinenetwork_gam_v2_id', '' );
-$id_active       = ! empty( $gam_id );
-$has_credentials = ! empty( get_option( 'equinenetwork_gam_v2_credentials', '' ) );
-$api             = new Equinenetwork_Gam_V2_API();
-$api_configured  = $api->is_configured();
+$gam_id               = get_option( 'equinenetwork_gam_v2_id', '' );
+$id_active            = ! empty( $gam_id );
+$has_credentials      = ! empty( get_option( 'equinenetwork_gam_v2_credentials', '' ) );
+$credentials_in_const = defined( 'ENGAM_GAM_CREDENTIALS_JSON' ) && ENGAM_GAM_CREDENTIALS_JSON;
+$api                  = new Equinenetwork_Gam_V2_API();
+$api_configured       = $api->is_configured();
 
 $notice = '';
 if ( isset( $_POST['engam_v2_settings_nonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['engam_v2_settings_nonce'] ) ), 'engam_v2_settings_save' ) ) {
     $form = sanitize_text_field( wp_unslash( $_POST['engam_form'] ?? '' ) );
     if ( current_user_can( 'manage_options' ) && 'core' === $form ) {
         update_option( 'equinenetwork_gam_v2_id', sanitize_text_field( wp_unslash( $_POST['equinenetwork_gam_v2_id'] ?? '' ) ) );
+        update_option( 'engam_v2_delete_data_on_uninstall', isset( $_POST['engam_v2_delete_data_on_uninstall'] ) ? 1 : 0 );
         delete_transient( 'engam_v2_line_items' );
         $gam_id    = get_option( 'equinenetwork_gam_v2_id', '' );
         $id_active = ! empty( $gam_id );
@@ -73,6 +75,14 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         placeholder="/22345131513/sitename">
                     <p class="eg-hint">Your full Google Ad Manager network path.</p>
                 </div>
+                <div class="eg-settings-field" style="margin-top:16px;padding-top:16px;border-top:1px solid #eee">
+                    <label class="eg-toggle">
+                        <input type="checkbox" name="engam_v2_delete_data_on_uninstall" value="1" <?php checked( (int) get_option( 'engam_v2_delete_data_on_uninstall', 0 ), 1 ); ?>>
+                        <span class="eg-toggle-track"><span class="eg-toggle-thumb"></span></span>
+                        Delete all data on uninstall
+                    </label>
+                    <p class="eg-hint">When on, deleting the plugin removes all its settings, caches, and saved ads (carousels, takeovers, leaderboards, stacker rules, credentials). When off, your data is preserved if the plugin is removed. Does not affect updates or deactivation.</p>
+                </div>
                 <button type="submit" class="eg-btn" style="width:100%;justify-content:center;display:flex">Save Settings</button>
             </form>
         </div>
@@ -83,13 +93,49 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         <div class="eg-head">
             <div>
                 <h2>GAM API</h2>
-                <p><?php echo $api_configured ? 'Credentials saved. API is active.' : 'Paste your service account JSON key to enable live campaign sync.'; ?></p>
+                <p><?php echo $api_configured ? 'Credentials active. API is live.' : 'Paste your service account JSON key to enable live campaign sync.'; ?></p>
             </div>
             <span class="eg-tag" style="<?php echo $api_configured ? '' : 'background:#111;color:#d0ff00;'; ?>"><?php echo $api_configured ? 'Active' : 'Setup'; ?></span>
         </div>
         <div class="eg-body">
-            <?php if ( $api_configured ) : ?>
-                <p style="font-size:13px;color:#555;margin:0 0 14px">Credentials are stored. The Elementor widget sponsor dropdown pulls live from GAM and caches for 1 hour.</p>
+
+            <?php if ( $credentials_in_const ) : ?>
+            <!-- Constant-based credentials — no upload needed -->
+            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:12px">
+                <span style="font-size:22px;flex-shrink:0">&#9989;</span>
+                <div>
+                    <strong style="font-size:13px;display:block;margin-bottom:4px">Credentials loaded from <code>wp-config.php</code></strong>
+                    <span style="font-size:12px;color:#555">The <code>ENGAM_GAM_CREDENTIALS_JSON</code> constant is defined on this server — no file upload needed. To update credentials, edit that constant in <code>wp-config.php</code>.</span>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <button class="eg-btn dark" style="border-color:#111" id="engam-test-connection">Test Connection</button>
+                <button class="eg-btn dark" style="border-color:#111" id="engam-refresh-cache">Refresh Cache</button>
+            </div>
+
+            <?php else : ?>
+            <!-- Normal upload UI -->
+            <?php if ( $api_configured ) :
+                $stored_creds = json_decode( get_option( 'equinenetwork_gam_v2_credentials', '' ), true );
+                $acct_email   = $stored_creds['client_email'] ?? '';
+                $project_id   = $stored_creds['project_id']   ?? '';
+            ?>
+                <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:flex-start;gap:10px">
+                    <span style="font-size:18px;flex-shrink:0">&#9989;</span>
+                    <div style="min-width:0">
+                        <strong style="font-size:13px;display:block;margin-bottom:2px">Connected</strong>
+                        <?php if ( $acct_email ) : ?>
+                        <span style="font-size:12px;color:#555;word-break:break-all"><?php echo esc_html( $acct_email ); ?></span><br>
+                        <?php endif; ?>
+                        <?php if ( $project_id ) : ?>
+                        <span style="font-size:11px;color:#888">Project: <?php echo esc_html( $project_id ); ?></span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+                    <button class="eg-btn dark" id="engam-test-connection" style="border-color:#111">Test Connection</button>
+                    <button class="eg-btn dark" style="border-color:#111" id="engam-refresh-cache">Refresh Cache</button>
+                </div>
             <?php else : ?>
                 <p style="font-size:13px;color:#555;margin:0 0 14px">Upload your service account JSON key file to enable live campaign sync from GAM.</p>
             <?php endif; ?>
@@ -109,18 +155,17 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     </div>
                 </div>
                 <p class="eg-hint">The key is stored securely in the WordPress database — never in a file or repository.</p>
+                <p class="eg-hint">Or skip uploads entirely: add <code>define( 'ENGAM_GAM_CREDENTIALS_JSON', '...' );</code> to <code>wp-config.php</code> on each server.</p>
             </div>
 
             <div style="display:flex;gap:10px;flex-wrap:wrap">
                 <button class="eg-btn" id="engam-save-credentials" style="pointer-events:none;opacity:.4" disabled>Save Credentials</button>
-                <button class="eg-btn dark" id="engam-test-connection"
-                    <?php echo ! $api_configured ? 'style="pointer-events:none;opacity:.4;border-color:#bbb"' : 'style="border-color:#111"'; ?>>
-                    Test Connection
-                </button>
-                <?php if ( $api_configured ) : ?>
-                <button class="eg-btn dark" style="border-color:#111" id="engam-refresh-cache">Refresh Cache</button>
+                <?php if ( ! $api_configured ) : ?>
+                <button class="eg-btn dark" id="engam-test-connection" style="pointer-events:none;opacity:.4;border-color:#bbb">Test Connection</button>
                 <?php endif; ?>
             </div>
+            <?php endif; ?>
+
             <div id="engam-api-status" style="display:none;margin-top:12px;padding:10px 14px;font-size:13px;font-weight:700"></div>
         </div>
     </div>
@@ -189,31 +234,6 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 statusEl.textContent = 'Request failed.';
             }).finally(function(){
                 testBtn.disabled = false; testBtn.textContent = 'Test & Refresh';
-            });
-        });
-    }
-
-    // Debug wrap creatives
-    var debugBtn = document.getElementById('engam-debug-creatives-btn');
-    var debugOut  = document.getElementById('engam-debug-creatives-out');
-    if (debugBtn && debugOut) {
-        debugBtn.addEventListener('click', function(){
-            var lid = (document.getElementById('engam-debug-li-id') || {}).value || '';
-            if (!lid.trim()) { alert('Enter a Line Item ID first.'); return; }
-            debugBtn.disabled = true; debugBtn.textContent = 'Testing…';
-            debugOut.style.display = 'none';
-            fetch(ajaxurl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'action=engam_v2_debug_wrap_creatives&nonce=' + encodeURIComponent(NONCE) + '&line_item_id=' + encodeURIComponent(lid)
-            }).then(function(r){ return r.json(); }).then(function(data){
-                debugOut.style.display = 'block';
-                debugOut.textContent = JSON.stringify(data.data || data, null, 2);
-            }).catch(function(e){
-                debugOut.style.display = 'block';
-                debugOut.textContent = 'Request failed: ' + e;
-            }).finally(function(){
-                debugBtn.disabled = false; debugBtn.textContent = 'Test Creatives';
             });
         });
     }

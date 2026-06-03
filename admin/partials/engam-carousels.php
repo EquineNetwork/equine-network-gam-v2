@@ -23,6 +23,7 @@ $engam_car_defaults = array(
     'ad_interval'    => 3,
     'ad_slotname'    => 'carousel',
     'sponsor_id'     => '',
+    'gam_line_item_id' => '',
     'slides_desktop' => 3,
     'slides_mobile'  => 1,
     'show_arrows'    => true,
@@ -69,6 +70,20 @@ if ( isset( $_POST['engam_v2_carousel_nonce'] ) && wp_verify_nonce( sanitize_tex
         $notice  = 'Carousel deleted.';
         $edit_id = '';
 
+    // ---- Activate / Deactivate ----
+    } elseif ( isset( $_POST['engam_carousel_toggle'] ) ) {
+        $cid = sanitize_text_field( wp_unslash( $_POST['engam_carousel_toggle'] ) );
+        foreach ( $carousels as &$c ) {
+            if ( ( $c['id'] ?? '' ) === $cid ) {
+                $c['active'] = empty( $c['active'] );
+                $notice = 'Carousel "' . esc_html( $c['name'] ?? '' ) . '" ' . ( $c['active'] ? 'activated.' : 'deactivated.' );
+                break;
+            }
+        }
+        unset( $c );
+        update_option( 'engam_v2_carousels', $carousels );
+        $edit_id = '';
+
     // ---- Duplicate ----
     } elseif ( isset( $_POST['engam_carousel_duplicate'] ) ) {
         $cid = sanitize_text_field( wp_unslash( $_POST['engam_carousel_duplicate'] ) );
@@ -90,6 +105,14 @@ if ( isset( $_POST['engam_v2_carousel_nonce'] ) && wp_verify_nonce( sanitize_tex
         $car_id = isset( $_POST['engam_car_id'] ) ? sanitize_text_field( wp_unslash( $_POST['engam_car_id'] ) ) : '';
         $is_new = empty( $car_id );
         if ( $is_new ) $car_id = uniqid( 'car_' );
+
+        // Preserve the manual Activate/Deactivate flag (set from the list, not this form). New carousels start active.
+        $prev_active = true;
+        if ( ! $is_new ) {
+            foreach ( $carousels as $c ) {
+                if ( ( $c['id'] ?? '' ) === $car_id ) { $prev_active = ! ( isset( $c['active'] ) && empty( $c['active'] ) ); break; }
+            }
+        }
 
         $hex = function( $k, $fallback ) {
             $v = sanitize_hex_color( wp_unslash( $_POST[ $k ] ?? '' ) );
@@ -132,11 +155,12 @@ if ( isset( $_POST['engam_v2_carousel_nonce'] ) && wp_verify_nonce( sanitize_tex
             'tag'            => isset( $_POST['engam_car_tag'] ) && $_POST['engam_car_tag'] !== '' ? intval( $_POST['engam_car_tag'] ) : '',
             'posts_count'    => max( 1, intval( $_POST['engam_car_posts_count'] ?? 12 ) ),
             'orderby'        => in_array( ( $_POST['engam_car_orderby'] ?? 'date' ), array( 'date', 'title', 'rand' ), true ) ? sanitize_text_field( wp_unslash( $_POST['engam_car_orderby'] ) ) : 'date',
-            'ad_size'        => in_array( ( $_POST['engam_car_ad_size'] ?? '300x250' ), array( '300x250', '300x300' ), true ) ? sanitize_text_field( wp_unslash( $_POST['engam_car_ad_size'] ) ) : '300x250',
-            'ads_enabled'    => isset( $_POST['engam_car_ads_enabled'] ),
+            'ad_size'        => '300x250',
+            'ads_enabled'    => true,
             'ad_interval'    => max( 1, intval( $_POST['engam_car_ad_interval'] ?? 3 ) ),
-            'ad_slotname'    => sanitize_text_field( wp_unslash( $_POST['engam_car_ad_slotname'] ?? 'carousel' ) ),
-            'sponsor_id'     => sanitize_text_field( wp_unslash( $_POST['engam_car_sponsor_id'] ?? '' ) ),
+            'ad_slotname'    => 'carousel',
+            'sponsor_id'     => '',
+            'gam_line_item_id' => sanitize_text_field( wp_unslash( $_POST['engam_car_gam_line_item_id'] ?? '' ) ),
             'slides_desktop' => max( 1, intval( $_POST['engam_car_slides_desktop'] ?? 3 ) ),
             'slides_mobile'  => max( 1, intval( $_POST['engam_car_slides_mobile'] ?? 1 ) ),
             'show_arrows'    => isset( $_POST['engam_car_show_arrows'] ),
@@ -164,7 +188,7 @@ if ( isset( $_POST['engam_v2_carousel_nonce'] ) && wp_verify_nonce( sanitize_tex
             'arrow_color'    => $hex( 'engam_car_arrow_color', '#ffffff' ),
             'btn_bg'         => $hex( 'engam_car_btn_bg', '#050505' ),
             'btn_color'      => $hex( 'engam_car_btn_color', '#ffffff' ),
-            'active'         => isset( $_POST['engam_car_active'] ),
+            'active'         => $prev_active,
             'schedule_start' => sanitize_text_field( wp_unslash( $_POST['engam_car_schedule_start'] ?? '' ) ),
             'schedule_end'   => sanitize_text_field( wp_unslash( $_POST['engam_car_schedule_end'] ?? '' ) ),
         );
@@ -208,7 +232,6 @@ $tag_options = array( '' => '— Any tag —' );
 foreach ( get_tags( array( 'hide_empty' => false ) ) as $term ) {
     $tag_options[ (int) $term->term_id ] = $term->name;
 }
-$sponsor_options = Equinenetwork_Gam_V2_Carousel_Render::sponsor_options();
 
 function engam_car_usage( $car_id ) {
     return Equinenetwork_Gam_V2_Carousel_Render::usage( $car_id );
@@ -230,14 +253,18 @@ function engam_car_source_label( $c, $cat_options, $tag_options ) {
     return empty( $parts ) ? 'All posts' : implode( ' · ', $parts );
 }
 
-// Status label (active / scheduled / expired / inactive).
+// Status label (deactivated / scheduled / expired / active).
+// A schedule overrides the manual Activate/Deactivate flag.
 function engam_car_status( $c ) {
-    if ( isset( $c['active'] ) && empty( $c['active'] ) ) return array( 'inactive', 'Inactive' );
     $now   = current_time( 'timestamp' );
     $start = ! empty( $c['schedule_start'] ) ? strtotime( $c['schedule_start'] ) : 0;
     $end   = ! empty( $c['schedule_end'] )   ? strtotime( $c['schedule_end'] )   : 0;
-    if ( $start && $now < $start ) return array( 'scheduled', 'Scheduled' );
-    if ( $end   && $now > $end   ) return array( 'expired',   'Expired'   );
+    if ( $start || $end ) {
+        if ( $start && $now < $start ) return array( 'scheduled', 'Scheduled' );
+        if ( $end   && $now > $end   ) return array( 'expired',   'Expired'   );
+        return array( 'active', 'Active' );
+    }
+    if ( isset( $c['active'] ) && empty( $c['active'] ) ) return array( 'inactive', 'Deactivated' );
     return array( 'active', 'Active' );
 }
 
@@ -305,17 +332,28 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ( $carousels as $car ) :
+                <?php
+                $engam_list_net = preg_replace( '/[^0-9]/', '', get_option( 'equinenetwork_gam_v2_id', '' ) );
+                foreach ( $carousels as $car ) :
                     $car       = wp_parse_args( $car, $engam_car_defaults );
                     $shortcode = '[en_carousel id="' . $car['id'] . '"]';
+                    $car_gam_id = (string) ( $car['gam_line_item_id'] ?? '' );
                     $source    = engam_car_source_label( $car, $cat_options, $tag_options );
                     $ads_label = ! empty( $car['ads_enabled'] ) ? 'Every ' . (int) $car['ad_interval'] : 'Off';
                     $usage     = engam_car_usage( $car['id'] );
                     list( $st_class, $st_label ) = engam_car_status( $car );
+                    $is_active     = ! ( isset( $car['active'] ) && empty( $car['active'] ) );
+                    $has_schedule  = ! empty( $car['schedule_start'] ) || ! empty( $car['schedule_end'] );
                 ?>
                 <tr>
                     <td>
-                        <div class="eg-campaign-name"><?php echo esc_html( $car['name'] ); ?></div>
+                        <div class="eg-campaign-name"><?php echo esc_html( $car['name'] ); ?><?php
+                            if ( $car_gam_id && $engam_list_net ) {
+                                echo '<a href="https://admanager.google.com/' . esc_attr( $engam_list_net )
+                                    . '#delivery/line_item/detail/line_item_id=' . rawurlencode( $car_gam_id )
+                                    . '" target="_blank" rel="noopener" style="font-size:10px;background:#d0ff00;color:#111;padding:1px 6px;border-radius:3px;font-weight:700;margin-left:6px;text-decoration:none">GAM ↗</a>'; // phpcs:ignore
+                            }
+                        ?></div>
                         <code class="engam-car-shortcode" data-shortcode="<?php echo esc_attr( $shortcode ); ?>"
                             title="Click to copy"
                             style="display:inline-block;margin-top:4px;font-size:12px;background:#f3f3ee;border:1px solid #deded8;border-radius:4px;padding:3px 8px;cursor:pointer;font-family:monospace"><?php echo esc_html( $shortcode ); ?></code>
@@ -344,6 +382,16 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         <div class="eg-actions-cell">
                             <a href="<?php echo esc_url( add_query_arg( array( 'page' => 'engam-v2-carousels', 'edit' => $car['id'] ), admin_url( 'admin.php' ) ) ); ?>"
                                class="eg-btn sm dark">Edit</a>
+                            <?php if ( $has_schedule ) : ?>
+                            <button type="button" class="eg-btn sm dark" style="opacity:.45;cursor:not-allowed" disabled
+                                title="A schedule is set — this carousel activates and deactivates automatically.">Scheduled</button>
+                            <?php else : ?>
+                            <form method="post" action="" style="display:inline">
+                                <?php wp_nonce_field( 'engam_v2_carousel_save', 'engam_v2_carousel_nonce' ); ?>
+                                <input type="hidden" name="engam_carousel_toggle" value="<?php echo esc_attr( $car['id'] ); ?>">
+                                <button type="submit" class="eg-btn sm <?php echo $is_active ? 'dark' : ''; ?>"><?php echo $is_active ? 'Deactivate' : 'Activate'; ?></button>
+                            </form>
+                            <?php endif; ?>
                             <form method="post" action="" style="display:inline">
                                 <?php wp_nonce_field( 'engam_v2_carousel_save', 'engam_v2_carousel_nonce' ); ?>
                                 <input type="hidden" name="engam_carousel_duplicate" value="<?php echo esc_attr( $car['id'] ); ?>">
@@ -384,7 +432,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         <?php wp_nonce_field( 'engam_v2_carousel_save', 'engam_v2_carousel_nonce' ); ?>
         <input type="hidden" name="engam_car_id" value="<?php echo $editing ? esc_attr( $editing['id'] ) : ''; ?>">
 
-        <!-- Name / Ad Size / Sponsor ID -->
+        <!-- Name / GAM Line Item -->
         <div class="eg-form-section" style="padding-bottom:18px;border-bottom:1px solid #deded8">
             <div class="eg-settings-field">
                 <label for="engam-car-name">Carousel Name <span style="color:#cc0000">*</span></label>
@@ -392,24 +440,95 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     value="<?php echo esc_attr( $cv( 'name' ) ); ?>"
                     placeholder="e.g. Horse Health — Top Stories" required>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px">
-                <div class="eg-settings-field">
-                    <label for="engam-car-ad-size">Ad Size</label>
-                    <select class="eg-input" name="engam_car_ad_size" id="engam-car-ad-size">
-                        <option value="300x250" <?php selected( $cv( 'ad_size' ), '300x250' ); ?>>300×250</option>
-                        <option value="300x300" <?php selected( $cv( 'ad_size' ), '300x300' ); ?>>300×300</option>
-                    </select>
-                    <p class="eg-hint">Creative size for ad slides in this carousel.</p>
-                </div>
-                <div class="eg-settings-field">
-                    <label for="engam-car-sponsor-id-top">Lock to Sponsor / Campaign</label>
-                    <select class="eg-input" name="engam_car_sponsor_id" id="engam-car-sponsor-id-top">
-                        <?php foreach ( $sponsor_options as $val => $lbl ) : ?>
-                            <option value="<?php echo esc_attr( $val ); ?>" <?php selected( (string) $cv( 'sponsor_id' ), (string) $val ); ?>><?php echo esc_html( $lbl ); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+            <?php
+            $car_current_gam_id = $cv( 'gam_line_item_id' );
+            $car_cached_li_all  = get_transient( 'engam_v2_line_items' );
+            $engam_net_code     = preg_replace( '/[^0-9]/', '', get_option( 'equinenetwork_gam_v2_id', '' ) );
+            $car_gam_link       = ( $car_current_gam_id && $engam_net_code )
+                ? 'https://admanager.google.com/' . $engam_net_code . '#delivery/line_item/detail/line_item_id=' . rawurlencode( $car_current_gam_id )
+                : '';
+            ?>
+            <!-- GAM Line Item Picker -->
+            <div class="eg-settings-field" style="margin-top:18px">
+                <label for="engam-car-gam-li-search">GAM Line Item <span style="font-weight:400;color:#888">(links schedule from GAM)</span></label>
+                <input type="hidden" name="engam_car_gam_line_item_id" id="engam-car-gam-li-id" value="<?php echo esc_attr( $car_current_gam_id ); ?>">
+                <input type="text" id="engam-car-gam-li-search" class="eg-input" autocomplete="off"
+                    placeholder="Search by name or GAM ID…"
+                    value="<?php
+                        if ( $car_current_gam_id && is_array( $car_cached_li_all ) ) {
+                            foreach ( $car_cached_li_all as $cli ) {
+                                if ( isset( $cli['gam_id'] ) && (string) $cli['gam_id'] === (string) $car_current_gam_id ) {
+                                    echo esc_attr( $cli['name'] . ' (' . $cli['gam_id'] . ')' );
+                                    break;
+                                }
+                            }
+                        }
+                    ?>">
+                <div id="engam-car-gam-li-results" style="display:none;border:1px solid #deded8;border-top:none;border-radius:0 0 6px 6px;background:#fff;max-height:220px;overflow-y:auto;position:relative;z-index:100"></div>
+                <p class="eg-hint">Select the GAM line item that delivers the ads in this carousel — flight dates display automatically.
+                    <a id="engam-car-gam-li-link" href="<?php echo esc_url( $car_gam_link ); ?>" target="_blank" rel="noopener"
+                       style="<?php echo $car_gam_link ? '' : 'display:none;'; ?>font-weight:700;text-decoration:none;margin-left:6px">View in GAM ↗</a>
+                </p>
+                <?php if ( ! is_array( $car_cached_li_all ) || empty( $car_cached_li_all ) ) : ?>
+                <p style="color:#cc8800;font-size:12px;margin:4px 0 0">No line items cached — go to <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-settings' ) ); ?>">Settings</a> and click Refresh Cache first.</p>
+                <?php endif; ?>
             </div>
+            <!-- Line items data + search for JS -->
+            <script>
+            window.engamLineItems = <?php echo wp_json_encode( is_array( $car_cached_li_all ) ? array_map( function( $li ) {
+                return array( 'gam_id' => $li['gam_id'] ?? '', 'name' => $li['name'] ?? '', 'start' => $li['start_time'] ?? '', 'end' => $li['end_time'] ?? '' );
+            }, $car_cached_li_all ) : array() ); ?>;
+            (function(){
+                var searchEl = document.getElementById('engam-car-gam-li-search');
+                var idEl     = document.getElementById('engam-car-gam-li-id');
+                var results  = document.getElementById('engam-car-gam-li-results');
+                var linkEl   = document.getElementById('engam-car-gam-li-link');
+                var netCode  = '<?php echo esc_js( $engam_net_code ); ?>';
+                if (!searchEl) return;
+                function updateLink(id) {
+                    if (!linkEl) return;
+                    if (id && netCode) {
+                        linkEl.href = 'https://admanager.google.com/' + netCode + '#delivery/line_item/detail/line_item_id=' + encodeURIComponent(id);
+                        linkEl.style.display = '';
+                    } else {
+                        linkEl.style.display = 'none';
+                    }
+                }
+                function showResults(q) {
+                    q = q.toLowerCase();
+                    if (!q) { results.style.display = 'none'; return; }
+                    var items = window.engamLineItems || [];
+                    var matches = items.filter(function(li) {
+                        return li.name.toLowerCase().indexOf(q) > -1 || (li.gam_id && li.gam_id.toString().indexOf(q) > -1);
+                    }).slice(0, 30);
+                    if (!matches.length) { results.innerHTML = '<div style="padding:10px 12px;color:#888;font-size:13px">No results</div>'; results.style.display = 'block'; return; }
+                    results.innerHTML = matches.map(function(li) {
+                        var s = li.start ? new Date(li.start).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+                        var e = li.end   ? new Date(li.end).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'No end';
+                        return '<div class="engam-car-gam-li-opt" data-id="'+li.gam_id+'" data-label="'+li.name.replace(/"/g,'&quot;')+' ('+li.gam_id+')" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f0f0ea;font-size:13px">'
+                            + '<strong>'+li.name+'</strong><br>'
+                            + '<span style="color:#888;font-size:11px">ID: '+li.gam_id+' &nbsp;|&nbsp; '+s+' → '+e+'</span>'
+                            + '</div>';
+                    }).join('');
+                    results.style.display = 'block';
+                }
+                searchEl.addEventListener('input', function() { showResults(this.value); });
+                searchEl.addEventListener('focus', function() { if(this.value) showResults(this.value); });
+                results.addEventListener('mousedown', function(e) {
+                    var opt = e.target.closest('.engam-car-gam-li-opt');
+                    if (!opt) return;
+                    idEl.value = opt.dataset.id;
+                    searchEl.value = opt.dataset.label;
+                    updateLink(opt.dataset.id);
+                    results.style.display = 'none';
+                });
+                // If the field is cleared, hide the GAM link.
+                searchEl.addEventListener('input', function() { if (!this.value) { idEl.value = ''; updateLink(''); } });
+                document.addEventListener('click', function(e) {
+                    if (e.target !== searchEl && !results.contains(e.target)) results.style.display = 'none';
+                });
+            })();
+            </script>
         </div>
 
         <!-- TABS -->
@@ -444,25 +563,11 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
             <!-- AD SLIDES -->
             <div class="eg-form-section">
                 <h3>Ad Slides</h3>
-                <div class="eg-settings-field">
-                    <label class="eg-toggle">
-                        <input type="checkbox" name="engam_car_ads_enabled" value="1" <?php checked( ! empty( $cv( 'ads_enabled' ) ) ); ?>>
-                        <span class="eg-toggle-track"><span class="eg-toggle-thumb"></span></span>
-                        Insert Ad Slides between slides
-                    </label>
-                    <p class="eg-hint">GAM decides if each ad slot fills — empty ad slides collapse automatically.</p>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
-                    <div class="eg-settings-field">
-                        <label for="engam-car-ad-interval">Ad After Every N Slides</label>
-                        <input class="eg-input" type="number" min="1" name="engam_car_ad_interval" id="engam-car-ad-interval"
-                            value="<?php echo esc_attr( $cv( 'ad_interval' ) ); ?>">
-                    </div>
-                    <div class="eg-settings-field">
-                        <label for="engam-car-ad-slotname">GAM Child Ad Unit</label>
-                        <input class="eg-input" type="text" name="engam_car_ad_slotname" id="engam-car-ad-slotname"
-                            value="<?php echo esc_attr( $cv( 'ad_slotname' ) ); ?>" placeholder="carousel">
-                    </div>
+                <p class="eg-hint" style="margin-top:-6px">Ad slides are inserted automatically between content slides. GAM decides if each ad slot fills — empty ad slides collapse automatically.</p>
+                <div class="eg-settings-field" style="max-width:320px">
+                    <label for="engam-car-ad-interval">Ad After Every N Slides</label>
+                    <input class="eg-input" type="number" min="1" name="engam_car_ad_interval" id="engam-car-ad-interval"
+                        value="<?php echo esc_attr( $cv( 'ad_interval' ) ); ?>">
                 </div>
             </div>
         </div><!-- /slides tab -->
@@ -473,26 +578,18 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
             <!-- SCHEDULE -->
             <div class="eg-form-section">
                 <h3>Schedule &amp; Visibility</h3>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
                     <div class="eg-settings-field">
                         <label for="engam-car-start">Schedule Start</label>
                         <input class="eg-input" type="datetime-local" name="engam_car_schedule_start" id="engam-car-start"
                             value="<?php echo $cv( 'schedule_start' ) ? esc_attr( str_replace( ' ', 'T', $cv( 'schedule_start' ) ) ) : ''; ?>">
-                        <p class="eg-hint">Leave blank to show immediately when active.</p>
+                        <p class="eg-hint">Leave blank to show immediately. When out of schedule, the carousel and its container are hidden.</p>
                     </div>
                     <div class="eg-settings-field">
                         <label for="engam-car-end">Schedule End</label>
                         <input class="eg-input" type="datetime-local" name="engam_car_schedule_end" id="engam-car-end"
                             value="<?php echo $cv( 'schedule_end' ) ? esc_attr( str_replace( ' ', 'T', $cv( 'schedule_end' ) ) ) : ''; ?>">
                         <p class="eg-hint">Leave blank for no end date.</p>
-                    </div>
-                    <div class="eg-settings-field" style="padding-top:20px">
-                        <label class="eg-toggle">
-                            <input type="checkbox" name="engam_car_active" value="1" <?php checked( ! empty( $cv( 'active' ) ) ); ?>>
-                            <span class="eg-toggle-track"><span class="eg-toggle-thumb"></span></span>
-                            Active
-                        </label>
-                        <p class="eg-hint" style="margin-top:8px">When inactive or out of schedule, the carousel and its container are hidden.</p>
                     </div>
                 </div>
             </div>

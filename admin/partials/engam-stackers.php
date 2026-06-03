@@ -1,30 +1,87 @@
 <?php if ( ! defined( 'WPINC' ) ) die;
 
-$notice = '';
+$notice    = '';
+$gam_netid = get_option( 'equinenetwork_gam_v2_id', '' );
+
+// Default global stacker injection settings. Migrate from the legacy per-stacker
+// list (first active entry) the first time this page is loaded.
+$stk_defaults = array(
+    'active'          => true,
+    'placement'       => 'paragraph',
+    'after_paragraph' => 5,
+    'cats'            => '',
+    'hide_cats'       => '',
+    'hide_ids'        => '',
+    'hide_sponsors'   => '',
+);
+$settings = get_option( 'engam_v2_stacker_settings', null );
+if ( ! is_array( $settings ) ) {
+    $settings = $stk_defaults;
+    $legacy   = get_option( 'engam_v2_stackers_list', array() );
+    if ( is_array( $legacy ) ) {
+        foreach ( $legacy as $ls ) {
+            if ( ! empty( $ls['active'] ) ) {
+                $settings = array(
+                    'active'          => true,
+                    'after_paragraph' => max( 1, (int) ( $ls['after_paragraph'] ?? 5 ) ),
+                    'cats'            => (string) ( $ls['cats'] ?? '' ),
+                    'hide_cats'       => (string) ( $ls['hide_cats'] ?? '' ),
+                    'hide_ids'        => (string) ( $ls['hide_ids'] ?? '' ),
+                    'hide_sponsors'   => (string) ( $ls['hide_sponsors'] ?? '' ),
+                );
+                break;
+            }
+        }
+    }
+}
+$settings = wp_parse_args( $settings, $stk_defaults );
+
+// ---- Handle POST ----
 if ( isset( $_POST['engam_v2_stacker_nonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['engam_v2_stacker_nonce'] ) ), 'engam_v2_stacker_save' ) ) {
-    if ( current_user_can( 'edit_posts' ) ) {
-        update_option( 'equinenetwork_gam_v2_stacker_enabled', isset( $_POST['equinenetwork_gam_v2_stacker_enabled'] ) ? '1' : '0' );
-        update_option( 'equinenetwork_gam_v2_stacker_slotname', sanitize_text_field( wp_unslash( $_POST['equinenetwork_gam_v2_stacker_slotname'] ?? 'stacker' ) ) );
-        update_option( 'equinenetwork_gam_v2_stacker_cats', sanitize_text_field( wp_unslash( $_POST['equinenetwork_gam_v2_stacker_cats'] ?? '' ) ) );
-        update_option( 'equinenetwork_gam_v2_stacker_hide_cats', sanitize_text_field( wp_unslash( $_POST['equinenetwork_gam_v2_stacker_hide_cats'] ?? '' ) ) );
-        update_option( 'equinenetwork_gam_v2_stacker_hide_ids', sanitize_text_field( wp_unslash( $_POST['equinenetwork_gam_v2_stacker_hide_ids'] ?? '' ) ) );
-        update_option( 'equinenetwork_gam_v2_stacker_hide_sponsors', sanitize_text_field( wp_unslash( $_POST['equinenetwork_gam_v2_stacker_hide_sponsors'] ?? '' ) ) );
+    if ( ! current_user_can( 'edit_posts' ) ) wp_die( -1 );
+
+    $action = isset( $_POST['engam_stacker_action'] ) ? sanitize_text_field( wp_unslash( $_POST['engam_stacker_action'] ) ) : '';
+
+    if ( 'save_settings' === $action ) {
+        $settings = array(
+            'active'          => true, // Stackers always inject — no off switch.
+            'placement'       => ( ( $_POST['engam_stacker_placement'] ?? 'paragraph' ) === 'end' ) ? 'end' : 'paragraph',
+            'after_paragraph' => max( 1, absint( $_POST['engam_stacker_after_paragraph'] ?? 5 ) ),
+            'hide_cats'       => implode( ',', array_filter( array_map( 'sanitize_title', (array) ( $_POST['engam_stacker_hide_cats_multi'] ?? array() ) ) ) ),
+            'hide_ids'        => implode( ',', array_filter( array_map( 'intval', (array) ( $_POST['engam_stacker_hide_ids_multi'] ?? array() ) ) ) ),
+            'hide_sponsors'   => sanitize_text_field( wp_unslash( $_POST['engam_stacker_hide_sponsors'] ?? '' ) ),
+        );
+        update_option( 'engam_v2_stacker_settings', $settings );
         $notice = 'Stacker settings saved.';
     }
 }
 
-$stacker_enabled  = get_option( 'equinenetwork_gam_v2_stacker_enabled', '0' ) === '1';
-$stacker_slotname = get_option( 'equinenetwork_gam_v2_stacker_slotname', 'stacker' );
-$stacker_cats     = get_option( 'equinenetwork_gam_v2_stacker_cats', '' );
-$hide_cats        = get_option( 'equinenetwork_gam_v2_stacker_hide_cats', '' );
-$hide_ids         = get_option( 'equinenetwork_gam_v2_stacker_hide_ids', '' );
-$hide_sponsors    = get_option( 'equinenetwork_gam_v2_stacker_hide_sponsors', '' );
+// Build {id:slug, title:name, type:'category'} data for the category pickers.
+$engam_cat_picker_data = function( $csv ) {
+    $out = array();
+    foreach ( array_filter( array_map( 'trim', explode( ',', (string) $csv ) ) ) as $slug ) {
+        $term  = get_term_by( 'slug', $slug, 'category' );
+        $out[] = array( 'id' => $slug, 'title' => $term ? $term->name : $slug, 'type' => 'category' );
+    }
+    return $out;
+};
+$hide_cats_data = $engam_cat_picker_data( $settings['hide_cats'] );
+
+$hide_ids_data = array();
+$hide_ids_raw  = trim( (string) $settings['hide_ids'] );
+if ( $hide_ids_raw !== '' ) {
+    $hide_ids_arr = array_filter( array_map( 'intval', explode( ',', $hide_ids_raw ) ) );
+    if ( $hide_ids_arr ) {
+        foreach ( get_posts( array( 'post__in' => $hide_ids_arr, 'post_type' => array( 'post', 'page' ), 'posts_per_page' => -1, 'post_status' => 'any' ) ) as $sp ) {
+            $hide_ids_data[] = array( 'id' => $sp->ID, 'title' => $sp->post_title, 'type' => $sp->post_type );
+        }
+    }
+}
 
 include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 ?>
 <div id="engam-v2-wrap">
 
-<!-- MASTHEAD -->
 <section class="eg-mast">
     <div class="eg-brand">
         <div class="eg-logo">EN</div>
@@ -44,82 +101,105 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 <div class="eg-notice"><?php echo esc_html( $notice ); ?></div>
 <?php endif; ?>
 
-<form method="post" action="">
-<?php wp_nonce_field( 'engam_v2_stacker_save', 'engam_v2_stacker_nonce' ); ?>
-
-<div class="eg-grid" style="grid-template-columns:1fr 1fr">
-
-    <!-- STACKER CONFIG -->
-    <div class="eg-card" style="margin-top:18px">
-        <div class="eg-head">
-            <div>
-                <h2>Stacker Ad</h2>
-                <p>GAM-targeted product stacker auto-injected at the end of posts.</p>
-            </div>
-            <span class="eg-tag" style="<?php echo $stacker_enabled ? '' : 'background:#111;color:#d0ff00;'; ?>"><?php echo $stacker_enabled ? 'On' : 'Off'; ?></span>
-        </div>
-        <div class="eg-body">
-            <div class="eg-settings-field">
-                <label class="eg-toggle">
-                    <input type="checkbox" name="equinenetwork_gam_v2_stacker_enabled" value="1" <?php checked( $stacker_enabled ); ?>>
-                    <span class="eg-toggle-track"><span class="eg-toggle-thumb"></span></span>
-                    Auto-inject stacker at the end of posts
-                </label>
-                <p class="eg-hint">GAM decides which posts actually fill it based on content targeting — empty slots collapse automatically.</p>
-            </div>
-            <div class="eg-settings-field">
-                <label for="engam-stacker-slot">Stacker Child Ad Unit</label>
-                <input class="eg-input" type="text" name="equinenetwork_gam_v2_stacker_slotname" id="engam-stacker-slot"
-                    value="<?php echo esc_attr( $stacker_slotname ); ?>" placeholder="stacker">
-                <p class="eg-hint">Appended to your GAM Network ID, e.g. <code>/22345131513/sitename/<strong>stacker</strong></code>. Size is 320&times;480.</p>
-            </div>
-            <div class="eg-settings-field">
-                <label for="engam-stacker-cats">Show Only on Categories (optional)</label>
-                <input class="eg-input" type="text" name="equinenetwork_gam_v2_stacker_cats" id="engam-stacker-cats"
-                    value="<?php echo esc_attr( $stacker_cats ); ?>" placeholder="e.g. horse-health, training">
-                <p class="eg-hint">Comma-separated category slugs. Leave blank to show on all posts.</p>
-            </div>
+<!-- STACKER OVERVIEW -->
+<div class="eg-card" style="margin-top:18px;margin-bottom:18px">
+    <div class="eg-head">
+        <div>
+            <h2>Stackers</h2>
+            <p>Stackers are created and managed entirely in GAM. The plugin injects the <code><?php echo esc_html( $gam_netid ? rtrim( $gam_netid, '/' ) . '/stacker' : '/networkId/stacker' ); ?></code> 320&times;480 slot into posts, and GAM serves the right creative based on its own targeting (AI category). Use the settings below to control where the slot is placed and where it should be hidden.</p>
         </div>
     </div>
+    <div class="eg-accentline"></div>
+</div>
 
-    <!-- EXCLUSION RULES -->
-    <div class="eg-card" style="margin-top:18px">
-        <div class="eg-head">
-            <div>
-                <h2>Hide Rules</h2>
-                <p>Stop the stacker from showing in specific situations.</p>
-            </div>
-            <span class="eg-tag" style="background:#111;color:#d0ff00;">Exclude</span>
-        </div>
-        <div class="eg-body">
-            <div class="eg-settings-field">
-                <label for="engam-stacker-hide-cats">Hide on Categories</label>
-                <input class="eg-input" type="text" name="equinenetwork_gam_v2_stacker_hide_cats" id="engam-stacker-hide-cats"
-                    value="<?php echo esc_attr( $hide_cats ); ?>" placeholder="e.g. sponsored, partner-content">
-                <p class="eg-hint">Comma-separated category slugs where the stacker should never appear.</p>
-            </div>
-            <div class="eg-settings-field">
-                <label for="engam-stacker-hide-ids">Hide on Specific Posts / Pages</label>
-                <input class="eg-input" type="text" name="equinenetwork_gam_v2_stacker_hide_ids" id="engam-stacker-hide-ids"
-                    value="<?php echo esc_attr( $hide_ids ); ?>" placeholder="e.g. 12, 458, 902">
-                <p class="eg-hint">Comma-separated post/page IDs to exclude.</p>
-            </div>
-            <div class="eg-settings-field">
-                <label for="engam-stacker-hide-sponsors">Hide When Sponsor ID Is Active</label>
-                <input class="eg-input" type="text" name="equinenetwork_gam_v2_stacker_hide_sponsors" id="engam-stacker-hide-sponsors"
-                    value="<?php echo esc_attr( $hide_sponsors ); ?>" placeholder="e.g. CactusRopes_Horses, Equinety_Salute">
-                <p class="eg-hint">If a post has one of these campaign overrides assigned (EN Campaign panel), the stacker is suppressed. Use <code>*</code> to hide the stacker on <strong>any</strong> page that has a sponsor override.</p>
-            </div>
+<!-- STACKER PLACEMENT & VISIBILITY — single site-wide injection config -->
+<div class="eg-card" style="margin-top:18px">
+    <div class="eg-head">
+        <div>
+            <h2>Placement &amp; Visibility</h2>
+            <p>Controls where the plugin injects the <code><?php echo esc_html( $gam_netid ? rtrim( $gam_netid, '/' ) . '/stacker' : '/networkId/stacker' ); ?></code> 320&times;480 slot. GAM decides which creative serves; these rules decide where the slot appears on the site.</p>
         </div>
     </div>
+    <form method="post" action="">
+        <?php wp_nonce_field( 'engam_v2_stacker_save', 'engam_v2_stacker_nonce' ); ?>
+        <input type="hidden" name="engam_stacker_action" value="save_settings">
 
+        <!-- PLACEMENT -->
+        <div class="eg-form-section">
+            <h3>Placement</h3>
+            <?php $place = ( ( $settings['placement'] ?? 'paragraph' ) === 'end' ) ? 'end' : 'paragraph'; ?>
+            <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start">
+                <div class="eg-settings-field">
+                    <label>Where to inject</label>
+                    <label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer;margin-bottom:6px">
+                        <input type="radio" name="engam_stacker_placement" value="paragraph" <?php checked( $place, 'paragraph' ); ?> onchange="document.getElementById('engam-stacker-para-wrap').style.display=this.checked?'block':'none'">
+                        After a paragraph
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer">
+                        <input type="radio" name="engam_stacker_placement" value="end" <?php checked( $place, 'end' ); ?> onchange="document.getElementById('engam-stacker-para-wrap').style.display=this.checked?'none':'block'">
+                        At the end of the post
+                    </label>
+                </div>
+                <div class="eg-settings-field" id="engam-stacker-para-wrap" style="max-width:200px;<?php echo $place === 'end' ? 'display:none' : ''; ?>">
+                    <label for="engam-stacker-paragraph">Inject After Paragraph</label>
+                    <input class="eg-input" type="number" min="1" max="20" name="engam_stacker_after_paragraph" id="engam-stacker-paragraph"
+                        value="<?php echo esc_attr( $settings['after_paragraph'] ); ?>" style="max-width:100px">
+                    <p class="eg-hint">Appears after this paragraph number. If the post is shorter, it falls back to the end.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- HIDE RULES -->
+        <div class="eg-form-section">
+            <h3>Hide Rules</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+                <div class="eg-settings-field">
+                    <label>Hide on Categories</label>
+                    <div id="engam-stacker-hide-cats-picker"></div>
+                    <script>
+                    document.addEventListener('DOMContentLoaded', function() {
+                        engamPostPicker({
+                            wrap:        '#engam-stacker-hide-cats-picker',
+                            name:        'engam_stacker_hide_cats_multi[]',
+                            action:      'engam_v2_search_terms',
+                            taxonomy:    'category',
+                            placeholder: 'Search categories…',
+                            selected:    <?php echo wp_json_encode( $hide_cats_data ); ?>
+                        });
+                    });
+                    </script>
+                    <p class="eg-hint">Search and select categories where the stacker should never appear.</p>
+                </div>
+                <div class="eg-settings-field">
+                    <label>Hide on Specific Posts / Pages</label>
+                    <div id="engam-stacker-hide-ids-picker"></div>
+                    <script>
+                    document.addEventListener('DOMContentLoaded', function() {
+                        engamPostPicker({
+                            wrap:     '#engam-stacker-hide-ids-picker',
+                            name:     'engam_stacker_hide_ids_multi[]',
+                            types:    ['post', 'page'],
+                            selected: <?php echo wp_json_encode( $hide_ids_data ); ?>
+                        });
+                    });
+                    </script>
+                    <p class="eg-hint">Search and select posts/pages where the stacker should never appear.</p>
+                </div>
+                <div class="eg-settings-field">
+                    <label for="engam-stacker-hide-sponsors">Hide When Sponsor ID Is Active</label>
+                    <input class="eg-input" type="text" name="engam_stacker_hide_sponsors" id="engam-stacker-hide-sponsors"
+                        value="<?php echo esc_attr( $settings['hide_sponsors'] ); ?>" placeholder="e.g. CactusRopes_Horses, Equinety_Salute">
+                    <p class="eg-hint">Suppress when a post has one of these sponsor overrides. Use <code>*</code> to hide on <strong>any</strong> sponsored post.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="eg-form-section" style="border-top:1px solid #deded8">
+            <button type="submit" class="eg-btn" style="padding:14px 32px;font-size:14px">Save Settings</button>
+        </div>
+    </form>
+    <div class="eg-accentline"></div>
 </div>
-
-<div style="margin-top:18px">
-    <button type="submit" class="eg-btn" style="padding:14px 32px;font-size:14px">Save Stacker Settings</button>
-</div>
-
-</form>
 
 </div><!-- .eg-content -->
 </div><!-- #engam-v2-wrap -->

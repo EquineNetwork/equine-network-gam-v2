@@ -24,7 +24,6 @@ require_once EQUINENETWORK_GAM_V2_PATH . 'admin/class-equinenetwork-gam-v2-admin
 		require_once EQUINENETWORK_GAM_V2_PATH . 'admin/class-equinenetwork-gam-v2-metabox.php';
 		require_once EQUINENETWORK_GAM_V2_PATH . 'public/class-equinenetwork-gam-v2-public.php';
 		require_once EQUINENETWORK_GAM_V2_PATH . 'public/class-equinenetwork-gam-v2-takeover.php';
-		require_once EQUINENETWORK_GAM_V2_PATH . 'public/class-equinenetwork-gam-v2-masthead.php'; // kept for reference; render_masthead no longer hooked
 		require_once EQUINENETWORK_GAM_V2_PATH . 'public/class-equinenetwork-gam-v2-carousel-render.php';
 		require_once EQUINENETWORK_GAM_V2_PATH . 'public/class-equinenetwork-gam-v2-carousel-shortcode.php';
 		require_once EQUINENETWORK_GAM_V2_PATH . 'public/class-equinenetwork-gam-v2-leaderboard.php';
@@ -62,18 +61,6 @@ require_once EQUINENETWORK_GAM_V2_PATH . 'admin/class-equinenetwork-gam-v2-admin
 		add_action( 'engam_warm_slot_sizes', function( $slot ) {
 			require_once EQUINENETWORK_GAM_V2_PATH . 'includes/class-equinenetwork-gam-v2-api.php';
 			( new Equinenetwork_Gam_V2_API() )->get_slot_sizes( $slot );
-		} );
-
-		// AJAX: debug wrap creatives for a given line item ID.
-		add_action( 'wp_ajax_engam_v2_debug_wrap_creatives', function() {
-			if ( ! current_user_can( 'manage_options' ) ) wp_die( -1 );
-			$nonce = isset( $_POST['nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['nonce'] ) ) : '';
-			if ( ! wp_verify_nonce( $nonce, 'engam_v2_admin' ) ) wp_die( -1 );
-			$lid = sanitize_text_field( wp_unslash( $_POST['line_item_id'] ?? '' ) );
-			require_once EQUINENETWORK_GAM_V2_PATH . 'includes/class-equinenetwork-gam-v2-api.php';
-			$api    = new Equinenetwork_Gam_V2_API();
-			$result = $api->debug_wrap_creatives( $lid );
-			wp_send_json_success( $result );
 		} );
 	}
 

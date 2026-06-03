@@ -134,8 +134,6 @@ class Equinenetwork_Gam_V2_Carousel_Render {
 			'tag'            => '',
 			'posts_count'    => 12,
 			'orderby'        => 'date',
-			'ad_size'        => '300x250',
-		'ads_enabled'    => true,
 			'ad_interval'    => 3,
 			'ad_slotname'    => 'carousel',
 			'sponsor_id'     => '',
@@ -184,11 +182,9 @@ class Equinenetwork_Gam_V2_Carousel_Render {
 
 		$source = ( ( $c['source'] ?? 'posts' ) === 'manual' ) ? 'manual' : 'posts';
 
-		$ads_enabled = ! empty( $c['ads_enabled'] );
-	$ad_size     = ( isset( $c['ad_size'] ) && $c['ad_size'] === '300x300' ) ? '300x300' : '300x250';
 		$interval    = max( 1, (int) $c['ad_interval'] );
-		$slotname    = $c['ad_slotname'] !== '' ? $c['ad_slotname'] : 'carousel';
-		$sponsor_id  = trim( (string) $c['sponsor_id'] );
+		$slotname    = ( ! empty( $c['ad_slotname'] ) ) ? $c['ad_slotname'] : 'carousel';
+		$sponsor_id  = trim( (string) ( $c['sponsor_id'] ?? '' ) );
 		$sd          = max( 1, (int) $c['slides_desktop'] );
 		$sm          = max( 1, (int) $c['slides_mobile'] );
 		$show_arrows = ! empty( $c['show_arrows'] );
@@ -248,8 +244,8 @@ class Equinenetwork_Gam_V2_Carousel_Render {
 			foreach ( $items as $s ) {
 				$slides[] = self::manual_slide( $s, $show_cat, $show_title, $show_excerpt, $excerpt_words, $post_btn_label );
 				$num++;
-				if ( $ads_enabled && ( $num % $interval === 0 ) ) {
-					$slides[] = self::ad_slide( $slotname, $sponsor_id, $ad_size );
+				if ( $num % $interval === 0 ) {
+					$slides[] = self::ad_slide( $slotname, $sponsor_id );
 				}
 			}
 			if ( empty( $slides ) ) {
@@ -278,8 +274,8 @@ class Equinenetwork_Gam_V2_Carousel_Render {
 				$q->the_post();
 				$slides[] = self::post_slide( $show_cat, $show_title, $show_excerpt, $excerpt_words, $post_btn, $post_btn_label );
 				$num++;
-				if ( $ads_enabled && ( $num % $interval === 0 ) ) {
-					$slides[] = self::ad_slide( $slotname, $sponsor_id, $ad_size );
+				if ( $num % $interval === 0 ) {
+					$slides[] = self::ad_slide( $slotname, $sponsor_id );
 				}
 			}
 			wp_reset_postdata();
@@ -422,19 +418,25 @@ class Equinenetwork_Gam_V2_Carousel_Render {
 	 * (and its container) when off or out of schedule.
 	 */
 	public static function is_visible( $c ) {
-		if ( isset( $c['active'] ) && empty( $c['active'] ) ) {
-			return false;
-		}
 		$now   = current_time( 'timestamp' );
 		$start = ! empty( $c['schedule_start'] ) ? strtotime( $c['schedule_start'] ) : 0;
 		$end   = ! empty( $c['schedule_end'] )   ? strtotime( $c['schedule_end'] )   : 0;
-		if ( $start && $now < $start ) return false;
-		if ( $end   && $now > $end )   return false;
-		return true;
+
+		// A schedule overrides the manual Activate/Deactivate flag.
+		if ( $start || $end ) {
+			if ( $start && $now < $start ) return false;
+			if ( $end   && $now > $end )   return false;
+			return true;
+		}
+
+		// No schedule set — fall back to the manual flag.
+		return ! ( isset( $c['active'] ) && empty( $c['active'] ) );
 	}
 
-	private static function ad_slide( $slotname, $sponsor_id = '', $ad_size = '300x250' ) {
-		$dims         = $ad_size === '300x300' ? '[300,300]' : '[300,250]';
+	private static function ad_slide( $slotname, $sponsor_id = '' ) {
+		// Multi-size slot — let GAM serve whichever creative size the line item has
+		// set up (300x250, 300x300, 336x280, etc.). The slide auto-fits the served size.
+		$dims         = '[[300,250],[300,300],[336,280],[250,250]]';
 		$sponsor_attr = $sponsor_id !== '' ? sprintf( ' data-sponsorid="%s"', esc_attr( $sponsor_id ) ) : '';
 		return sprintf(
 			'<div class="engam-car-slide engam-car-ad"><div class="equinenetworkad" data-sizeDesktop="%s" data-sizeMobile="%s" data-sizes="%s" data-align="center" data-slotname="%s"%s></div></div>',
