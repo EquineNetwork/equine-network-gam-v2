@@ -1,0 +1,284 @@
+<?php
+if ( ! defined( 'WPINC' ) ) die;
+if ( ! get_option( 'equinenetwork_gam_v2_id' ) ) return;
+
+// Determine content-type targeting.
+$taxonomy = '';
+if ( is_category() || is_archive() ) $taxonomy = 'category';
+if ( is_single() )                   $taxonomy = 'article';
+if ( is_page() )                     $taxonomy = 'page';
+if ( is_tag() )                      $taxonomy = 'tag';
+if ( is_front_page() || is_home() )  $taxonomy = 'home';
+if ( is_search() )                   $taxonomy = 'search';
+
+// Build URL path segments.
+global $wp;
+$current_url  = home_url( add_query_arg( array(), $wp->request ) );
+$paths        = explode( '/', $current_url );
+$final_paths  = array_values( array_filter( $paths ) );
+
+// ACF-style scrubber for ai_category values (keeps GAM happy).
+function engam_v2_scrub_for_gam( $str ) {
+	$replacements = array(
+		'Neonatal Maladjustment Syndrome Dummy Foal' => 'Neonatal Maladjustment Synd. Dummy Foal',
+		'Exercise Induced Pulmonary Hemorrhage EIPH'  => 'Exercise Induced Pulmonary Hemorr. EIPH',
+	);
+	if ( isset( $replacements[ $str ] ) ) $str = $replacements[ $str ];
+	$str = preg_replace( '/\&/', 'and', $str );
+	$str = preg_replace( "/[\,\']/", '', $str );
+	$str = preg_replace( '/\//', '-', $str );
+	return addslashes( $str );
+}
+
+// Sponsor ID overrides: post meta (no ACF needed) → exceptions.json.
+$sponsor_override     = '';
+$post_meta_sponsor    = get_post_meta( get_the_ID(), '_engam_v2_sponsor_id', true );
+$term_meta_sponsor    = '';
+$queried              = get_queried_object();
+if ( $queried instanceof WP_Term ) {
+	$term_meta_sponsor = get_term_meta( $queried->term_id, '_engam_v2_sponsor_id', true );
+}
+
+if ( $post_meta_sponsor ) {
+	$sponsor_override = esc_js( $post_meta_sponsor );
+} elseif ( $term_meta_sponsor ) {
+	$sponsor_override = esc_js( $term_meta_sponsor );
+} else {
+	// Legacy ACF fallback so existing sites keep working.
+	if ( function_exists( 'get_field' ) ) {
+		$acf_val = get_field( 'sponlineitemid' ) ?: get_field( 'sponsorship_id' );
+		if ( $acf_val ) $sponsor_override = esc_js( $acf_val );
+	}
+	// exceptions.json fallback.
+	$exceptions_file = EQUINENETWORK_GAM_V2_PATH . 'public/exceptions/exceptions.json';
+	if ( file_exists( $exceptions_file ) ) {
+		$exceptions = json_decode( file_get_contents( $exceptions_file ), true );
+		if ( isset( $exceptions[ get_the_ID() ] ) ) {
+			$sponsor_override = esc_js( $exceptions[ get_the_ID() ] );
+		}
+	}
+}
+
+// AI category targeting from native post meta (falls back to ACF if present).
+$ai_category     = get_post_meta( get_the_ID(), '_engam_v2_ai_category', true );
+$ai_sub_category = get_post_meta( get_the_ID(), '_engam_v2_ai_sub_category', true );
+if ( ! $ai_category && function_exists( 'get_field' ) )     $ai_category     = get_field( 'ai_category' );
+if ( ! $ai_sub_category && function_exists( 'get_field' ) ) $ai_sub_category = get_field( 'ai_sub_category' );
+?>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+var MD5=function(d){var r=M(V(Y(X(d),8*d.length)));return r.toLowerCase()};function M(d){for(var _,m="0123456789ABCDEF",f="",r=0;r<d.length;r++)_=d.charCodeAt(r),f+=m.charAt(_>>>4&15)+m.charAt(15&_);return f}function X(d){for(var _=Array(d.length>>2),m=0;m<_.length;m++)_[m]=0;for(m=0;m<8*d.length;m+=8)_[m>>5]|=(255&d.charCodeAt(m/8))<<m%32;return _}function V(d){for(var _="",m=0;m<32*d.length;m+=8)_+=String.fromCharCode(d[m>>5]>>>m%32&255);return _}function Y(d,_){d[_>>5]|=128<<_%32,d[14+(_+64>>>9<<4)]=_;for(var m=1732584193,f=-271733879,r=-1732584194,i=271733878,n=0;n<d.length;n+=16){var h=m,t=f,g=r,e=i;f=md5_ii(f=md5_ii(f=md5_ii(f=md5_ii(f=md5_hh(f=md5_hh(f=md5_hh(f=md5_hh(f=md5_gg(f=md5_gg(f=md5_gg(f=md5_gg(f=md5_ff(f=md5_ff(f=md5_ff(f=md5_ff(f,r=md5_ff(r,i=md5_ff(i,m=md5_ff(m,f,r,i,d[n+0],7,-680876936),f,r,d[n+1],12,-389564586),m,f,d[n+2],17,606105819),i,m,d[n+3],22,-1044525330),r=md5_ff(r,i=md5_ff(i,m=md5_ff(m,f,r,i,d[n+4],7,-176418897),f,r,d[n+5],12,1200080426),m,f,d[n+6],17,-1473231341),i,m,d[n+7],22,-45705983),r=md5_ff(r,i=md5_ff(i,m=md5_ff(m,f,r,i,d[n+8],7,1770035416),f,r,d[n+9],12,-1958414417),m,f,d[n+10],17,-42063),i,m,d[n+11],22,-1990404162),r=md5_ff(r,i=md5_ff(i,m=md5_ff(m,f,r,i,d[n+12],7,1804603682),f,r,d[n+13],12,-40341101),m,f,d[n+14],17,-1502002290),i,m,d[n+15],22,1236535329),r=md5_gg(r,i=md5_gg(i,m=md5_gg(m,f,r,i,d[n+1],5,-165796510),f,r,d[n+6],9,-1069501632),m,f,d[n+11],14,643717713),i,m,d[n+0],20,-373897302),r=md5_gg(r,i=md5_gg(i,m=md5_gg(m,f,r,i,d[n+5],5,-701558691),f,r,d[n+10],9,38016083),m,f,d[n+15],14,-660478335),i,m,d[n+4],20,-405537848),r=md5_gg(r,i=md5_gg(i,m=md5_gg(m,f,r,i,d[n+9],5,568446438),f,r,d[n+14],9,-1019803690),m,f,d[n+3],14,-187363961),i,m,d[n+8],20,1163531501),r=md5_gg(r,i=md5_gg(i,m=md5_gg(m,f,r,i,d[n+13],5,-1444681467),f,r,d[n+2],9,-51403784),m,f,d[n+7],14,1735328473),i,m,d[n+12],20,-1926607734),r=md5_hh(r,i=md5_hh(i,m=md5_hh(m,f,r,i,d[n+5],4,-378558),f,r,d[n+8],11,-2022574463),m,f,d[n+11],16,1839030562),i,m,d[n+14],23,-35309556),r=md5_hh(r,i=md5_hh(i,m=md5_hh(m,f,r,i,d[n+1],4,-1530992060),f,r,d[n+4],11,1272893353),m,f,d[n+7],16,-155497632),i,m,d[n+10],23,-1094730640),r=md5_hh(r,i=md5_hh(i,m=md5_hh(m,f,r,i,d[n+13],4,681279174),f,r,d[n+0],11,-358537222),m,f,d[n+3],16,-722521979),i,m,d[n+6],23,76029189),r=md5_hh(r,i=md5_hh(i,m=md5_hh(m,f,r,i,d[n+9],4,-640364487),f,r,d[n+12],11,-421815835),m,f,d[n+15],16,530742520),i,m,d[n+2],23,-995338651),r=md5_ii(r,i=md5_ii(i,m=md5_ii(m,f,r,i,d[n+0],6,-198630844),f,r,d[n+7],10,1126891415),m,f,d[n+14],15,-1416354905),i,m,d[n+5],21,-57434055),r=md5_ii(r,i=md5_ii(i,m=md5_ii(m,f,r,i,d[n+12],6,1700485571),f,r,d[n+3],10,-1894986606),m,f,d[n+10],15,-1051523),i,m,d[n+1],21,-2054922799),r=md5_ii(r,i=md5_ii(i,m=md5_ii(m,f,r,i,d[n+8],6,1873313359),f,r,d[n+15],10,-30611744),m,f,d[n+6],15,-1560198380),i,m,d[n+13],21,1309151649),r=md5_ii(r,i=md5_ii(i,m=md5_ii(m,f,r,i,d[n+4],6,-145523070),f,r,d[n+11],10,-1120210379),m,f,d[n+2],15,718787259),i,m,d[n+9],21,-343485551),m=safe_add(m,h),f=safe_add(f,t),r=safe_add(r,g),i=safe_add(i,e)}return Array(m,f,r,i)}function md5_cmn(d,_,m,f,r,i){return safe_add(bit_rol(safe_add(safe_add(_,d),safe_add(f,i)),r),m)}function md5_ff(d,_,m,f,r,i,n){return md5_cmn(_&m|~_&f,d,_,r,i,n)}function md5_gg(d,_,m,f,r,i,n){return md5_cmn(_&f|m&~f,d,_,r,i,n)}function md5_hh(d,_,m,f,r,i,n){return md5_cmn(_^m^f,d,_,r,i,n)}function md5_ii(d,_,m,f,r,i,n){return md5_cmn(m^(_|~f),d,_,r,i,n)}function safe_add(d,_){var m=(65535&d)+(65535&_);return(d>>16)+(_>>16)+(m>>16)<<16|65535&m}function bit_rol(d,_){return d<<_|d>>>32-_}
+
+var callbacks = 0;
+var adSlots   = document.getElementsByClassName('equinenetworkad');
+
+window.googletag = window.googletag || {cmd: []};
+googletag.cmd.push(function() {
+
+	for (var i = 0; i < adSlots.length; i++) {
+		var slot       = adSlots[i];
+		var sizeDesktop = (typeof slot.dataset.sizedesktop === 'undefined') ? null : JSON.parse(slot.dataset.sizedesktop);
+		var sizeMobile  = (typeof slot.dataset.sizemobile  === 'undefined') ? null : JSON.parse(slot.dataset.sizemobile);
+		var adSize      = (typeof slot.dataset.sizes       === 'undefined') ? null : JSON.parse(slot.dataset.sizes);
+		var adAlign     = slot.dataset.align    || 'center';
+		var popup       = slot.dataset.popup    || false;
+		var sponsorID   = slot.dataset.sponsorid || null;
+		var slotName    = slot.dataset.slotname  || null;
+
+		// Server-side sponsor override (from post/term meta or ACF).
+		<?php if ( $sponsor_override ) : ?>
+		sponsorID = '<?php echo $sponsor_override; ?>';
+		<?php endif; ?>
+
+		// Build size mapping only when explicit sizes are provided.
+		// Masthead and leaderboard slots omit sizes — GAM serves fluid creatives.
+		var mapping = null;
+		if (sizeDesktop && sizeMobile) {
+			mapping = googletag.sizeMapping()
+				.addSize([728, 0], sizeDesktop)
+				.addSize([0,   0], sizeMobile)
+				.build();
+		}
+
+		var divID       = MD5(i + 'equinenetwork');
+		var injectedHTML = '';
+		var displayAd   = true;
+
+		if ( popup === false || popup === 'false' ) {
+			injectedHTML = '<div align="' + adAlign + '"><div id="' + divID + '" style="text-align:' + adAlign + '" align="' + adAlign + '"></div></div>';
+		} else {
+			// 5-minute cooldown for popup ads.
+			var lastClose = parseInt(localStorage.getItem('engamModalLastClose')) || 0;
+			if ( (Date.now() - lastClose) / 1000 / 60 <= 5 ) {
+				injectedHTML = '';
+				displayAd    = false;
+			} else {
+				injectedHTML  = '<div id="adModal" style="z-index:300000000;display:none;padding-top:100px;position:fixed;left:0;top:0;width:100%;height:100%;overflow:auto;background-color:rgba(0,0,0,.4)">';
+				injectedHTML += '<div style="margin:auto;position:relative;padding:0;outline:0;">';
+				injectedHTML += '<div onclick="localStorage.setItem(\'engamModalLastClose\',Date.now());document.getElementById(\'adModal\').style.display=\'none\'" style="text-align:center;margin:0 0 3px 0;cursor:pointer;"><span style="background:white;padding:3px;">[X] CLOSE</span></div>';
+				injectedHTML += '<div id="' + divID + '" style="text-align:' + adAlign + '" align="' + adAlign + '"></div>';
+				injectedHTML += '</div></div>';
+
+				setTimeout(function() {
+					var modal = document.getElementById('adModal');
+					if (modal) {
+						modal.style.display = 'none';
+						localStorage.setItem('engamModalLastClose', Date.now());
+					}
+				}, 10000);
+			}
+		}
+
+		if ( displayAd ) {
+			var gamNetworkID = window.equinenetwork_gam_v2_id;
+			var fullSlotName = slotName ? (gamNetworkID + '/' + slotName) : gamNetworkID;
+
+			var gamSlot = googletag.defineSlot(fullSlotName, adSize || 'fluid', divID)
+				.addService(googletag.pubads());
+			if (mapping) gamSlot.defineSizeMapping(mapping);
+
+			gamSlot.setTargeting('content-type', '<?php echo esc_js( $taxonomy ); ?>');
+			gamSlot.setTargeting('sponlineitemid', [sponsorID]);
+
+			<?php
+			echo 'var paths = ' . wp_json_encode( $final_paths ) . ';';
+			if ( is_single() ) :
+				echo "gamSlot.setTargeting('categories', window.post_categories);\n";
+				echo "gamSlot.setTargeting('subcategories', window.post_subcategories);\n";
+				echo "gamSlot.setTargeting('postid', '" . esc_js( get_the_ID() ) . "');\n";
+				echo "gamSlot.setTargeting('path', [paths, window.post_categories, window.post_subcategories, '" . esc_js( get_the_ID() ) . "']);\n";
+				if ( $ai_category ) :
+					echo "gamSlot.setTargeting('ai_category', ['" . esc_js( engam_v2_scrub_for_gam( $ai_category ) ) . "']);\n";
+					echo "googletag.pubads().setTargeting('ai_category', ['" . esc_js( engam_v2_scrub_for_gam( $ai_category ) ) . "']);\n";
+				endif;
+				if ( $ai_sub_category ) :
+					echo "gamSlot.setTargeting('ai_sub_category', ['" . esc_js( engam_v2_scrub_for_gam( $ai_sub_category ) ) . "']);\n";
+					echo "googletag.pubads().setTargeting('ai_sub_category', ['" . esc_js( engam_v2_scrub_for_gam( $ai_sub_category ) ) . "']);\n";
+				endif;
+			else :
+				echo "gamSlot.setTargeting('path', paths);\n";
+			endif;
+			?>
+
+			slot.innerHTML += injectedHTML;
+
+			if ( adAlign === 'center' ) googletag.setConfig({centering: true});
+			googletag.enableServices();
+			googletag.display(divID);
+		}
+
+		popup = false;
+
+		// Collapse empty slots + their Elementor container.
+		if ( callbacks === 0 ) {
+			googletag.pubads().addEventListener('slotRenderEnded', function(event) {
+				if ( event.advertiserId === null ) {
+					var emptySlot = document.getElementById(event.slot.getSlotElementId());
+					if ( emptySlot ) {
+						// Walk up to the .equinenetworkad wrapper and hide it.
+						var wrapper = emptySlot.closest ? emptySlot.closest('.equinenetworkad') : emptySlot.parentNode;
+						if ( wrapper ) {
+							// Admin debug: show the empty slot + its ad unit path
+							// instead of collapsing, so placement can be verified.
+							if ( window.equinenetwork_gam_v2_debug ) {
+								try { wrapper.setAttribute('data-engam-debug', event.slot.getAdUnitPath()); } catch(e){}
+								wrapper.classList.add('engam-debug-empty');
+								return;
+							}
+							wrapper.classList.add('engam-empty');
+
+							// If this ad lives inside an EN carousel, the carousel
+							// collapses its own empty slide via CSS (:has(.engam-empty)).
+							// Do NOT walk up to the Elementor containers — that would
+							// hide the entire carousel widget. Bail out here.
+							if ( wrapper.closest('.engam-car') ) {
+								return;
+							}
+
+							// Collapse widget-level containers.
+							var elContainer = wrapper.closest('.elementor-widget-container');
+							if ( elContainer ) elContainer.classList.add('engam-container-empty');
+							var elWidget = wrapper.closest('.elementor-widget');
+							if ( elWidget ) elWidget.classList.add('engam-container-empty');
+
+							// Walk up to Elementor column / Flex Container and collapse
+							// if ALL sibling widgets inside it are also empty.
+							var colSelectors = [
+								'.elementor-column',
+								'.elementor-col-100',
+								'.e-con',
+								'.e-con-inner'
+							];
+							colSelectors.forEach(function(sel) {
+								var col = wrapper.closest(sel);
+								if ( ! col ) return;
+								// Check that every .elementor-widget inside this column is empty.
+								var allWidgets = col.querySelectorAll('.elementor-widget');
+								if ( allWidgets.length === 0 ) return;
+								var allEmpty = true;
+								for ( var w = 0; w < allWidgets.length; w++ ) {
+									if ( ! allWidgets[w].classList.contains('engam-container-empty') ) {
+										allEmpty = false;
+										break;
+									}
+								}
+								if ( allEmpty ) col.classList.add('engam-container-empty');
+							});
+
+							// Also collapse Elementor sections that only contain empty columns.
+							var section = wrapper.closest('.elementor-section');
+							if ( section ) {
+								var allCols = section.querySelectorAll('.elementor-column');
+								var allColsEmpty = allCols.length > 0;
+								for ( var c = 0; c < allCols.length; c++ ) {
+									if ( ! allCols[c].classList.contains('engam-container-empty') ) {
+										allColsEmpty = false;
+										break;
+									}
+								}
+								if ( allColsEmpty ) section.classList.add('engam-container-empty');
+							}
+						}
+					}
+				} else {
+					var filledSlot = document.getElementById(event.slot.getSlotElementId());
+					if ( filledSlot ) {
+						// event.size is an array for fixed sizes, 'fluid' string for fluid creatives.
+						if ( Array.isArray(event.size) ) {
+							var isMasthead = !!filledSlot.closest('.engam-masthead');
+							if ( isMasthead && event.size[0] > 0 ) {
+								// Scale masthead fluid: fill 100% width, preserve aspect ratio.
+								var adW = event.size[0];
+								var adH = event.size[1];
+								filledSlot.style.transformOrigin = 'top left';
+								filledSlot.style.width  = adW + 'px';
+								filledSlot.style.height = adH + 'px';
+								var mastheadWrap = filledSlot.closest('.engam-masthead');
+								function scaleMasthead() {
+									var scale = mastheadWrap.offsetWidth / adW;
+									filledSlot.style.transform = 'scale(' + scale + ')';
+									mastheadWrap.style.height = Math.round( adH * scale ) + 'px';
+								}
+								scaleMasthead();
+								window.addEventListener( 'resize', scaleMasthead );
+							} else if ( !isMasthead ) {
+								filledSlot.style.width    = event.size[0] + 'px';
+								filledSlot.style.maxWidth  = event.size[0] + 'px';
+								filledSlot.style.height   = event.size[1] + 'px';
+								filledSlot.style.maxHeight = event.size[1] + 'px';
+							}
+							var modal = document.getElementById('adModal');
+							if ( modal && filledSlot.querySelector('iframe') ) modal.style.display = 'block';
+						}
+					}
+				}
+			});
+		}
+		callbacks++;
+	}
+});
+
+}, false);
+</script>
+<?php
