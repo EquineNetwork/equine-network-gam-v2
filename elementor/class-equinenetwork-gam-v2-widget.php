@@ -40,6 +40,29 @@ class Equinenetwork_Gam_V2_Widget extends \Elementor\Widget_Base {
 		);
 	}
 
+	// Derive a single desktop box { w, h, fluid } from a preset's desktop sizes
+	// (picks the largest fixed size; flags fluid creatives).
+	private static function preset_box( $desktop ) {
+		if ( isset( $desktop[0] ) && is_int( $desktop[0] ) ) {
+			return array( 'w' => (int) $desktop[0], 'h' => (int) $desktop[1], 'fluid' => false );
+		}
+		$fluid = false;
+		$best  = null;
+		foreach ( (array) $desktop as $d ) {
+			if ( $d === 'fluid' ) { $fluid = true; continue; }
+			if ( is_array( $d ) && isset( $d[0], $d[1] ) ) {
+				if ( ! $best || ( $d[0] * $d[1] ) > ( $best[0] * $best[1] ) ) {
+					$best = $d;
+				}
+			}
+		}
+		return array(
+			'w'     => $best ? (int) $best[0] : 0,
+			'h'     => $best ? (int) $best[1] : 0,
+			'fluid' => $fluid,
+		);
+	}
+
 	public function get_name()       { return 'engam_v2_ad_slot'; }
 	public function get_title()      { return 'EN Ad Slot'; }
 	public function get_icon()       { return 'eicon-banner'; }
@@ -346,29 +369,54 @@ class Equinenetwork_Gam_V2_Widget extends \Elementor\Widget_Base {
 		echo '<div' . $attr_str . '></div>';
 	}
 
-	// Elementor editor preview placeholder.
+	// Elementor editor preview placeholder — drawn at the slot's true pixel size.
 	protected function content_template() {
-		$presets = self::presets();
-		$preset_json = json_encode( array_map( function( $p ) { return $p['label']; }, $presets ) );
+		$presets     = self::presets();
+		$labels_json  = wp_json_encode( array_map( function( $p ) { return $p['label']; }, $presets ) );
+		$dims_json    = wp_json_encode( array_map( array( __CLASS__, 'preset_box' ), $presets ) );
 		?>
 		<#
-		var presetLabels = <?php echo $preset_json; ?>;
-		var label = presetLabels[ settings.ad_preset ] || ( 'Custom (' + settings.custom_desktop_width + 'x' + settings.custom_desktop_height + ')' );
+		var presetLabels = <?php echo $labels_json; ?>;
+		var presetDims   = <?php echo $dims_json; ?>;
+
+		var key   = settings.ad_preset;
+		var label = presetLabels[ key ] || ( 'Custom (' + ( settings.custom_desktop_width || '?' ) + 'x' + ( settings.custom_desktop_height || '?' ) + ')' );
+
+		// Scheduled-campaign override mirrors the front-end logic.
 		var now = new Date();
-		var inSchedule = false;
 		if ( settings.scheduled_preset && settings.schedule_start ) {
 			var start = settings.schedule_start ? new Date(settings.schedule_start) : null;
 			var end   = settings.schedule_end   ? new Date(settings.schedule_end)   : null;
 			if ( (!start || now >= start) && (!end || now <= end) ) {
-				inSchedule = true;
-				label = presetLabels[settings.scheduled_preset] || settings.scheduled_preset;
-				label += ' (SCHEDULED CAMPAIGN ACTIVE)';
+				key   = settings.scheduled_preset;
+				label = ( presetLabels[ key ] || key ) + ' (SCHEDULED CAMPAIGN ACTIVE)';
 			}
 		}
+
+		var w = 0, h = 0, fluid = false;
+		if ( key === 'custom' ) {
+			w = parseInt( settings.custom_desktop_width )  || 0;
+			h = parseInt( settings.custom_desktop_height ) || 0;
+		} else if ( presetDims[ key ] ) {
+			w = presetDims[ key ].w; h = presetDims[ key ].h; fluid = presetDims[ key ].fluid;
+		}
+
+		var boxStyle = 'background:#f0f0f0;border:2px dashed #aaa;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;box-sizing:border-box;margin:0 auto;text-align:center;';
+		if ( fluid || ! w || ! h ) {
+			boxStyle += 'width:100%;min-height:120px;padding:16px;';
+		} else {
+			// Exact pixel dimensions of the ad slot, for design reference.
+			boxStyle += 'width:' + w + 'px;height:' + h + 'px;';
+		}
 		#>
-		<div style="background:#f0f0f0;border:2px dashed #aaa;padding:16px;text-align:center;font-family:sans-serif;">
-			<strong style="display:block;margin-bottom:4px;">EN Ad Slot</strong>
+		<div style="{{ boxStyle }}">
+			<strong style="margin-bottom:4px;">EN Ad Slot</strong>
 			<span style="color:#555;font-size:12px;">{{ label }}</span>
+			<# if ( w && h && ! fluid ) { #>
+				<span style="color:#999;font-size:11px;margin-top:2px;">{{ w }}&times;{{ h }} px</span>
+			<# } else if ( fluid ) { #>
+				<span style="color:#999;font-size:11px;margin-top:2px;">Fluid size</span>
+			<# } #>
 			<# if ( settings.sponsor_id ) { #>
 				<span style="display:block;color:#888;font-size:11px;margin-top:4px;">Campaign: {{ settings.sponsor_id }}</span>
 			<# } #>

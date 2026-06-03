@@ -41,6 +41,19 @@ if ( isset( $_POST['engam_v2_to_nonce'] ) && wp_verify_nonce( sanitize_text_fiel
         $to_type = isset( $_POST['engam_to_type'] ) ? sanitize_text_field( wp_unslash( $_POST['engam_to_type'] ) ) : 'wrap';
         if ( ! in_array( $to_type, array( 'masthead', 'wrap' ), true ) ) $to_type = 'wrap';
 
+        // Active state is controlled from the list (Activate/Deactivate), not this
+        // form. Preserve the existing record's state on edit; new records default
+        // to active so they go live as soon as the GAM schedule is in flight.
+        $prev_active = true;
+        if ( ! $is_new ) {
+            foreach ( $takeovers as $existing_to ) {
+                if ( isset( $existing_to['id'] ) && $existing_to['id'] === $to_id ) {
+                    $prev_active = ! empty( $existing_to['active'] );
+                    break;
+                }
+            }
+        }
+
         if ( 'masthead' === $to_type ) {
             // Pages come as checkbox array engam_to_pages[]
             $pages_raw = isset( $_POST['engam_to_pages'] ) ? (array) $_POST['engam_to_pages'] : array();
@@ -57,18 +70,20 @@ if ( isset( $_POST['engam_v2_to_nonce'] ) && wp_verify_nonce( sanitize_text_fiel
                 'gam_line_item_id' => sanitize_text_field( wp_unslash( $_POST['engam_to_gam_line_item_id'] ?? '' ) ),
                 'schedule_start' => sanitize_text_field( wp_unslash( $_POST['engam_to_schedule_start'] ?? '' ) ),
                 'schedule_end'   => sanitize_text_field( wp_unslash( $_POST['engam_to_schedule_end'] ?? '' ) ),
-                'active'         => ! empty( $_POST['engam_to_active'] ),
+                'active'         => $prev_active,
             );
         } else {
             $record = array(
                 'id'               => $to_id,
                 'type'             => 'wrap',
                 'name'             => sanitize_text_field( wp_unslash( $_POST['engam_to_name'] ?? '' ) ),
-                'gam_line_item_id' => sanitize_text_field( wp_unslash( $_POST['engam_to_gam_line_item_id'] ?? '' ) ),
-                'slot_name'        => sanitize_text_field( wp_unslash( $_POST['engam_to_slot_name'] ?? '' ) ),
+                'gam_line_item_id' => sanitize_text_field( wp_unslash( $_POST['engam_to_wrap_gam_line_item_id'] ?? '' ) ),
                 'bg_color'         => sanitize_hex_color( wp_unslash( $_POST['engam_to_bg_color'] ?? '#000000' ) ) ?: '#000000',
-                'active'           => ! empty( $_POST['engam_to_active'] ),
+                'active'           => $prev_active,
                 'show_to_admins'   => ! empty( $_POST['engam_to_show_to_admins'] ),
+                'wrap_cats'        => implode( ',', array_filter( array_map( 'sanitize_title', (array) ( $_POST['engam_to_wrap_cats'] ?? array() ) ) ) ),
+                'wrap_pages'       => array_values( array_filter( array_map( 'intval', (array) ( $_POST['engam_to_wrap_pages'] ?? array() ) ) ) ),
+                'wrap_posts'       => array_values( array_filter( array_map( 'intval', (array) ( $_POST['engam_to_wrap_posts'] ?? array() ) ) ) ),
             );
         }
 
@@ -132,6 +147,9 @@ if ( is_array( $cached_li ) ) {
 
 // Helper: compute status label
 function engam_to_status( $t ) {
+    // An entry with no GAM line item has nothing to deliver — it can never be
+    // "Active" no matter what the active flag says.
+    if ( empty( $t['gam_line_item_id'] ) ) return array( 'inactive', 'No Line Item' );
     if ( empty( $t['active'] ) ) return array( 'inactive', 'Inactive' );
     $now   = current_time( 'timestamp' );
     $start = ! empty( $t['schedule_start'] ) ? strtotime( $t['schedule_start'] ) : 0;
@@ -229,7 +247,9 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ( $takeovers as $to ) :
+                <?php
+                $engam_list_net = preg_replace( '/[^0-9]/', '', get_option( 'equinenetwork_gam_v2_id', '' ) );
+                foreach ( $takeovers as $to ) :
                     list( $badge_class, $badge_label ) = engam_to_status( $to );
                     $to_type   = isset( $to['type'] ) ? $to['type'] : 'wrap';
 
@@ -239,11 +259,16 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         $li        = $gam_line_item_map[ $gam_li_key ];
                         $start_fmt = ! empty( $li['start_time'] ) ? date_i18n( 'M j, Y', strtotime( $li['start_time'] ) ) : '—';
                         $end_fmt   = ! empty( $li['end_time'] )   ? date_i18n( 'M j, Y', strtotime( $li['end_time'] ) )   : 'No end';
-                        $gam_badge = '<span style="font-size:10px;background:#d0ff00;color:#111;padding:1px 5px;border-radius:3px;font-weight:700;margin-left:4px">GAM</span>';
                     } else {
                         $start_fmt = ! empty( $to['schedule_start'] ) ? date_i18n( 'M j, Y', strtotime( $to['schedule_start'] ) ) : '—';
                         $end_fmt   = ! empty( $to['schedule_end'] )   ? date_i18n( 'M j, Y', strtotime( $to['schedule_end'] ) )   : '—';
-                        $gam_badge = '';
+                    }
+                    // Consistent "GAM ↗" deep link to the line item (shown when one is linked).
+                    $gam_badge = '';
+                    if ( $gam_li_key && $engam_list_net ) {
+                        $gam_badge = '<a href="https://admanager.google.com/' . esc_attr( $engam_list_net )
+                            . '#delivery/line_item/detail/line_item_id=' . rawurlencode( $gam_li_key )
+                            . '" target="_blank" rel="noopener" style="font-size:10px;background:#d0ff00;color:#111;padding:1px 6px;border-radius:3px;font-weight:700;margin-left:6px;text-decoration:none">GAM ↗</a>';
                     }
                 ?>
                 <tr>
@@ -359,6 +384,10 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 <?php
                 $cached_li_all = get_transient( 'engam_v2_line_items' );
                 $current_gam_id = ( $editing && isset( $editing['type'] ) && 'masthead' === $editing['type'] ) ? ( $editing['gam_line_item_id'] ?? '' ) : '';
+                $engam_net_code = preg_replace( '/[^0-9]/', '', get_option( 'equinenetwork_gam_v2_id', '' ) );
+                $mh_gam_link    = ( $current_gam_id && $engam_net_code )
+                    ? 'https://admanager.google.com/' . $engam_net_code . '#delivery/line_item/detail/line_item_id=' . rawurlencode( $current_gam_id )
+                    : '';
                 ?>
                 <div class="eg-settings-field" style="margin-bottom:18px">
                     <label for="engam-gam-li-search">GAM Line Item <span style="font-weight:400;color:#888">(links schedule from GAM)</span></label>
@@ -376,7 +405,10 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                             }
                         ?>">
                     <div id="engam-gam-li-results" style="display:none;border:1px solid #deded8;border-top:none;border-radius:0 0 6px 6px;background:#fff;max-height:220px;overflow-y:auto;position:relative;z-index:100"></div>
-                    <p class="eg-hint">Select the GAM line item that delivers this masthead — flight dates will display automatically.</p>
+                    <p class="eg-hint">Select the GAM line item that delivers this masthead — flight dates will display automatically.
+                        <a id="engam-gam-li-link" href="<?php echo esc_url( $mh_gam_link ); ?>" target="_blank" rel="noopener"
+                           style="<?php echo $mh_gam_link ? '' : 'display:none;'; ?>font-weight:700;text-decoration:none;margin-left:6px">View in GAM ↗</a>
+                    </p>
                     <?php if ( ! is_array( $cached_li_all ) || empty( $cached_li_all ) ) : ?>
                     <p style="color:#cc8800;font-size:12px;margin:4px 0 0">No line items cached — go to <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-settings' ) ); ?>">Settings</a> and click Refresh Cache first.</p>
                     <?php endif; ?>
@@ -390,7 +422,16 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     var searchEl = document.getElementById('engam-gam-li-search');
                     var idEl     = document.getElementById('engam-gam-li-id');
                     var results  = document.getElementById('engam-gam-li-results');
+                    var linkEl   = document.getElementById('engam-gam-li-link');
+                    var netCode  = '<?php echo esc_js( $engam_net_code ); ?>';
                     if ( ! searchEl ) return;
+                    function updateLink(id) {
+                        if (!linkEl) return;
+                        if (id && netCode) {
+                            linkEl.href = 'https://admanager.google.com/' + netCode + '#delivery/line_item/detail/line_item_id=' + encodeURIComponent(id);
+                            linkEl.style.display = '';
+                        } else { linkEl.style.display = 'none'; }
+                    }
                     function showResults( q ) {
                         q = q.toLowerCase();
                         if ( ! q ) { results.style.display = 'none'; return; }
@@ -415,8 +456,10 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         if ( ! opt ) return;
                         idEl.value = opt.dataset.id;
                         searchEl.value = opt.dataset.label;
+                        updateLink(opt.dataset.id);
                         results.style.display = 'none';
                     });
+                    searchEl.addEventListener('input', function() { if (!this.value) { idEl.value = ''; updateLink(''); } });
                     document.addEventListener('click', function(e) {
                         if ( e.target !== searchEl ) results.style.display = 'none';
                     });
@@ -438,42 +481,31 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         <p class="eg-hint">Display this masthead on the front page / blog index.</p>
                     </div>
                     <div class="eg-settings-field">
-                        <label for="engam-to-pages">Additional Pages</label>
+                        <label>Additional Pages</label>
                         <?php
                         $selected_pages = ( $editing && isset( $editing['type'] ) && 'masthead' === $editing['type'] && ! empty( $editing['pages'] ) )
                             ? array_map( 'intval', (array) $editing['pages'] )
                             : array();
-                        $all_pages = get_pages( array( 'sort_column' => 'post_title', 'sort_order' => 'ASC', 'post_status' => 'publish' ) );
+                        $selected_pages_data = array();
+                        if ( $selected_pages ) {
+                            foreach ( get_posts( array( 'post__in' => $selected_pages, 'post_type' => array( 'post', 'page' ), 'posts_per_page' => -1, 'post_status' => 'publish' ) ) as $sp ) {
+                                $selected_pages_data[] = array( 'id' => $sp->ID, 'title' => $sp->post_title, 'type' => $sp->post_type );
+                            }
+                        }
                         ?>
-                        <input type="text" id="engam-pages-search" class="eg-input" placeholder="Search pages…" autocomplete="off"
-                            style="margin-bottom:6px">
-                        <div id="engam-pages-list" style="border:1px solid #deded8;border-radius:6px;max-height:180px;overflow-y:auto;background:#fff">
-                            <?php foreach ( $all_pages as $p ) : ?>
-                            <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-bottom:1px solid #f0f0ea;font-size:13px"
-                                class="engam-page-option">
-                                <input type="checkbox" name="engam_to_pages[]"
-                                    value="<?php echo esc_attr( $p->ID ); ?>"
-                                    <?php checked( in_array( $p->ID, $selected_pages, true ) ); ?>>
-                                <?php echo esc_html( $p->post_title ); ?>
-                                <span style="color:#999;font-size:11px;margin-left:auto"><?php echo esc_html( $p->ID ); ?></span>
-                            </label>
-                            <?php endforeach; ?>
-                        </div>
-                        <p class="eg-hint">Show masthead on these pages. Leave unchecked to use Homepage toggle only.</p>
+                        <div id="engam-to-pages-picker"></div>
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            engamPostPicker({
+                                wrap:     '#engam-to-pages-picker',
+                                name:     'engam_to_pages[]',
+                                types:    ['page'],
+                                selected: <?php echo wp_json_encode( $selected_pages_data ); ?>
+                            });
+                        });
+                        </script>
+                        <p class="eg-hint">Show masthead on these pages. Leave empty to use Homepage toggle only.</p>
                     </div>
-                </div>
-            </div>
-
-            <div class="eg-form-section">
-                <h3>Status</h3>
-                <div class="eg-settings-field">
-                    <label class="eg-toggle">
-                        <input type="checkbox" name="engam_to_active" value="1" id="engam-mast-active"
-                            <?php checked( $editing && isset( $editing['type'] ) && 'masthead' === $editing['type'] ? ! empty( $editing['active'] ) : false ); ?>>
-                        <span class="eg-toggle-track"><span class="eg-toggle-thumb"></span></span>
-                        Active (masthead is live)
-                    </label>
-                    <p class="eg-hint">Schedule is managed in GAM via the linked line item above.</p>
                 </div>
             </div>
 
@@ -488,11 +520,14 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 <?php
                 $wrap_current_gam_id = ( $editing && isset( $editing['type'] ) && 'wrap' === $editing['type'] ) ? ( $editing['gam_line_item_id'] ?? '' ) : '';
                 $wrap_cached_li_all  = get_transient( 'engam_v2_line_items' );
+                $wrap_gam_link       = ( $wrap_current_gam_id && $engam_net_code )
+                    ? 'https://admanager.google.com/' . $engam_net_code . '#delivery/line_item/detail/line_item_id=' . rawurlencode( $wrap_current_gam_id )
+                    : '';
                 ?>
                 <!-- GAM Line Item Picker for Wrap -->
                 <div class="eg-settings-field" style="margin-bottom:18px">
                     <label for="engam-gam-li-wrap-search">GAM Line Item <span style="font-weight:400;color:#888">(links schedule from GAM)</span></label>
-                    <input type="hidden" name="engam_to_gam_line_item_id" id="engam-gam-li-wrap-id" value="<?php echo esc_attr( $wrap_current_gam_id ); ?>">
+                    <input type="hidden" name="engam_to_wrap_gam_line_item_id" id="engam-gam-li-wrap-id" value="<?php echo esc_attr( $wrap_current_gam_id ); ?>">
                     <input type="text" id="engam-gam-li-wrap-search" class="eg-input" autocomplete="off"
                         placeholder="Search by name or GAM ID…"
                         value="<?php
@@ -506,7 +541,10 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                             }
                         ?>">
                     <div id="engam-gam-li-wrap-results" style="display:none;border:1px solid #deded8;border-top:none;border-radius:0 0 6px 6px;background:#fff;max-height:220px;overflow-y:auto;position:relative;z-index:100"></div>
-                    <p class="eg-hint">Select the GAM line item that delivers this wrap — flight dates will display automatically.</p>
+                    <p class="eg-hint">Select the GAM line item that delivers this wrap — flight dates will display automatically.
+                        <a id="engam-gam-li-wrap-link" href="<?php echo esc_url( $wrap_gam_link ); ?>" target="_blank" rel="noopener"
+                           style="<?php echo $wrap_gam_link ? '' : 'display:none;'; ?>font-weight:700;text-decoration:none;margin-left:6px">View in GAM ↗</a>
+                    </p>
                     <?php if ( ! is_array( $wrap_cached_li_all ) || empty( $wrap_cached_li_all ) ) : ?>
                     <p style="color:#cc8800;font-size:12px;margin:4px 0 0">No line items cached — go to <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-settings' ) ); ?>">Settings</a> and click Refresh Cache first.</p>
                     <?php endif; ?>
@@ -516,7 +554,16 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     var searchEl = document.getElementById('engam-gam-li-wrap-search');
                     var idEl     = document.getElementById('engam-gam-li-wrap-id');
                     var results  = document.getElementById('engam-gam-li-wrap-results');
+                    var linkEl   = document.getElementById('engam-gam-li-wrap-link');
+                    var netCode  = '<?php echo esc_js( $engam_net_code ); ?>';
                     if (!searchEl) return;
+                    function updateLink(id) {
+                        if (!linkEl) return;
+                        if (id && netCode) {
+                            linkEl.href = 'https://admanager.google.com/' + netCode + '#delivery/line_item/detail/line_item_id=' + encodeURIComponent(id);
+                            linkEl.style.display = '';
+                        } else { linkEl.style.display = 'none'; }
+                    }
                     function showWrapResults(q) {
                         q = q.toLowerCase();
                         if (!q) { results.style.display = 'none'; return; }
@@ -542,22 +589,17 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         if (!opt) return;
                         idEl.value = opt.dataset.id;
                         searchEl.value = opt.dataset.label;
+                        updateLink(opt.dataset.id);
                         results.style.display = 'none';
                     });
+                    searchEl.addEventListener('input', function() { if (!this.value) { idEl.value = ''; updateLink(''); } });
                     document.addEventListener('click', function(e) {
                         if (e.target !== searchEl) results.style.display = 'none';
                     });
                 })();
                 </script>
 
-                <!-- Slot Name input -->
-                <div class="eg-settings-field">
-                    <label for="engam-to-slot-name">GAM Ad Unit Slot Name</label>
-                    <input class="eg-input" type="text" name="engam_to_slot_name" id="engam-to-slot-name"
-                        value="<?php echo ( $editing && isset( $editing['type'] ) && 'wrap' === $editing['type'] ) ? esc_attr( $editing['slot_name'] ?? '' ) : ''; ?>"
-                        placeholder="e.g. horseandrider">
-                </div>
-                <p class="eg-hint">The GAM ad unit code (found in Inventory → Ad Units). All 3 wrap positions (left 450×1200, right 450×1200, background 2000×333) use this same unit — GAM routes creatives by size. GAM controls images, clicks, impressions, and scheduling.</p>
+                <p class="eg-hint">The plugin automatically detects the creative size GAM serves and scales the panels accordingly — no manual size configuration needed.</p>
             </div>
 
             <div class="eg-form-section">
@@ -576,21 +618,102 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 </div>
             </div>
 
+            <!-- TARGETING -->
+            <div class="eg-form-section">
+                <h3>Page Targeting <span style="font-weight:400;color:#888;font-size:12px">(optional — leave blank to show on all pages)</span></h3>
+                <?php
+                $is_wrap_edit = ( $editing && isset( $editing['type'] ) && 'wrap' === $editing['type'] );
+
+                // Pre-populate pages.
+                $wrap_sel_pages = ( $is_wrap_edit && ! empty( $editing['wrap_pages'] ) ) ? array_map( 'intval', (array) $editing['wrap_pages'] ) : array();
+                $wrap_sel_pages_data = array();
+                if ( $wrap_sel_pages ) {
+                    foreach ( get_posts( array( 'post__in' => $wrap_sel_pages, 'post_type' => array( 'page' ), 'posts_per_page' => -1, 'post_status' => 'publish' ) ) as $sp ) {
+                        $wrap_sel_pages_data[] = array( 'id' => $sp->ID, 'title' => $sp->post_title, 'type' => $sp->post_type );
+                    }
+                }
+
+                // Pre-populate posts.
+                $wrap_sel_posts = ( $is_wrap_edit && ! empty( $editing['wrap_posts'] ) ) ? array_map( 'intval', (array) $editing['wrap_posts'] ) : array();
+                $wrap_sel_posts_data = array();
+                if ( $wrap_sel_posts ) {
+                    foreach ( get_posts( array( 'post__in' => $wrap_sel_posts, 'post_type' => array( 'post' ), 'posts_per_page' => -1, 'post_status' => 'publish' ) ) as $sp ) {
+                        $wrap_sel_posts_data[] = array( 'id' => $sp->ID, 'title' => $sp->post_title, 'type' => $sp->post_type );
+                    }
+                }
+
+                // Pre-populate categories (stored as comma-separated slugs).
+                $wrap_cats_raw  = $is_wrap_edit ? trim( (string) ( $editing['wrap_cats'] ?? '' ) ) : '';
+                $wrap_cat_slugs = $wrap_cats_raw !== '' ? array_filter( array_map( 'trim', explode( ',', $wrap_cats_raw ) ) ) : array();
+                $wrap_sel_cats_data = array();
+                foreach ( $wrap_cat_slugs as $slug ) {
+                    $term = get_term_by( 'slug', $slug, 'category' );
+                    $wrap_sel_cats_data[] = array( 'id' => $slug, 'title' => $term ? $term->name : $slug, 'type' => 'category' );
+                }
+                ?>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
+                    <div class="eg-settings-field">
+                        <label>Show Only on Specific Pages</label>
+                        <div id="engam-wrap-pages-picker"></div>
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            engamPostPicker({
+                                wrap:        '#engam-wrap-pages-picker',
+                                name:        'engam_to_wrap_pages[]',
+                                types:       ['page'],
+                                placeholder: 'Search pages…',
+                                selected:    <?php echo wp_json_encode( $wrap_sel_pages_data ); ?>
+                            });
+                        });
+                        </script>
+                        <p class="eg-hint">Select specific pages. Leave empty to show on all (unless other targeting is set).</p>
+                    </div>
+                    <div class="eg-settings-field">
+                        <label>Show Only on Specific Posts</label>
+                        <div id="engam-wrap-posts-picker"></div>
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            engamPostPicker({
+                                wrap:        '#engam-wrap-posts-picker',
+                                name:        'engam_to_wrap_posts[]',
+                                types:       ['post'],
+                                placeholder: 'Search posts…',
+                                selected:    <?php echo wp_json_encode( $wrap_sel_posts_data ); ?>
+                            });
+                        });
+                        </script>
+                        <p class="eg-hint">Select specific posts. Leave empty to show on all (unless other targeting is set).</p>
+                    </div>
+                    <div class="eg-settings-field">
+                        <label>Show Only on Categories</label>
+                        <div id="engam-wrap-cats-picker"></div>
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            engamPostPicker({
+                                wrap:        '#engam-wrap-cats-picker',
+                                name:        'engam_to_wrap_cats[]',
+                                action:      'engam_v2_search_terms',
+                                taxonomy:    'category',
+                                placeholder: 'Search categories…',
+                                selected:    <?php echo wp_json_encode( $wrap_sel_cats_data ); ?>
+                            });
+                        });
+                        </script>
+                        <p class="eg-hint">Takeover only shows on posts in these categories.</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- VISIBILITY -->
             <div class="eg-form-section">
                 <h3>Visibility</h3>
                 <div style="display:flex;flex-direction:column;gap:14px">
                     <label class="eg-toggle">
-                        <input type="checkbox" name="engam_to_active" value="1" id="engam-to-active" <?php checked( ( $editing && isset( $editing['type'] ) && 'wrap' === $editing['type'] ) ? ! empty( $editing['active'] ) : false ); ?>>
-                        <span class="eg-toggle-track"><span class="eg-toggle-thumb"></span></span>
-                        Active (takeover is live)
-                    </label>
-                    <label class="eg-toggle">
                         <input type="checkbox" name="engam_to_show_to_admins" value="1" id="engam-to-show-admins" <?php checked( ( $editing && isset( $editing['type'] ) && 'wrap' === $editing['type'] ) ? ! empty( $editing['show_to_admins'] ) : false ); ?>>
                         <span class="eg-toggle-track"><span class="eg-toggle-thumb"></span></span>
                         Show full takeover to Admins/Editors
                     </label>
-                    <p class="eg-hint" style="margin-top:0">When off, admins/editors see a lime notice bar instead of the full takeover.</p>
+                    <p class="eg-hint" style="margin-top:0">When off, admins/editors see a lime notice bar instead of the full takeover. Activate or deactivate this takeover from the list above.</p>
                 </div>
             </div>
 
@@ -688,16 +811,6 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         document.getElementById(removeBtnId).style.display = 'none';
     };
 
-    // ---- Page search filter ----
-    var pageSearch = document.getElementById('engam-pages-search');
-    if (pageSearch) {
-        pageSearch.addEventListener('input', function(){
-            var q = this.value.toLowerCase();
-            document.querySelectorAll('#engam-pages-list .engam-page-option').forEach(function(row){
-                row.style.display = row.textContent.toLowerCase().indexOf(q) > -1 ? '' : 'none';
-            });
-        });
-    }
 
 })();
 </script>

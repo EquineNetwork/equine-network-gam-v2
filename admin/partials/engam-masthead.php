@@ -263,13 +263,27 @@ if ( $edit_id ) :
                 </label>
             </div>
             <div class="eg-settings-field">
-                <label for="engam-mh-pages">Also show on these pages <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-                <select class="eg-input" name="engam_mh_pages[]" id="engam-mh-pages" multiple size="8" style="height:auto;padding:8px">
-                    <?php foreach ( $all_pages as $p ) : ?>
-                        <option value="<?php echo (int) $p->ID; ?>" <?php echo in_array( (int) $p->ID, array_map( 'intval', (array) $f['pages'] ), true ) ? 'selected' : ''; ?>><?php echo esc_html( $p->post_title ); ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <p class="eg-hint">Hold &#8984;/Ctrl to select multiple.</p>
+                <label>Also show on these pages <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+                <?php
+                $mh_selected_data = array();
+                if ( ! empty( $f['pages'] ) ) {
+                    foreach ( get_posts( array( 'post__in' => array_map( 'intval', (array) $f['pages'] ), 'post_type' => 'page', 'posts_per_page' => -1, 'post_status' => 'publish' ) ) as $sp ) {
+                        $mh_selected_data[] = array( 'id' => $sp->ID, 'title' => $sp->post_title, 'type' => 'page' );
+                    }
+                }
+                ?>
+                <div id="engam-mh-pages-picker"></div>
+                <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    engamPostPicker({
+                        wrap:     '#engam-mh-pages-picker',
+                        name:     'engam_mh_pages[]',
+                        types:    ['page'],
+                        selected: <?php echo wp_json_encode( $mh_selected_data ); ?>
+                    });
+                });
+                </script>
+                <p class="eg-hint">Search and select pages to show this masthead on.</p>
             </div>
         </div>
 

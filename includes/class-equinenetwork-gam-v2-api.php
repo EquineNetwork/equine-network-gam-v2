@@ -17,9 +17,15 @@ class Equinenetwork_Gam_V2_API {
 
 	public function __construct() {
 		$this->network_code = get_option( 'equinenetwork_gam_v2_id', '' );
-		$stored             = get_option( 'equinenetwork_gam_v2_credentials', '' );
-		if ( ! empty( $stored ) ) {
-			$this->credentials = json_decode( $stored, true );
+
+		// wp-config.php constant takes priority over DB-stored credentials.
+		if ( defined( 'ENGAM_GAM_CREDENTIALS_JSON' ) && ENGAM_GAM_CREDENTIALS_JSON ) {
+			$this->credentials = json_decode( ENGAM_GAM_CREDENTIALS_JSON, true );
+		} else {
+			$stored = get_option( 'equinenetwork_gam_v2_credentials', '' );
+			if ( ! empty( $stored ) ) {
+				$this->credentials = json_decode( $stored, true );
+			}
 		}
 	}
 
@@ -42,7 +48,7 @@ class Equinenetwork_Gam_V2_API {
 			$cached = get_transient( self::CACHE_KEY );
 			// Auto-bust cache if it's missing required fields (old format).
 			if ( $cached !== false && is_array( $cached ) && ! empty( $cached )
-				&& ( ! isset( $cached[0]['gam_id'] ) || ! isset( $cached[0]['resource_name'] ) ) ) {
+				&& ( ! isset( $cached[0]['gam_id'] ) || ! isset( $cached[0]['resource_name'] ) || ! isset( $cached[0]['status'] ) ) ) {
 				delete_transient( self::CACHE_KEY );
 				$cached = false;
 			}
@@ -177,7 +183,7 @@ class Equinenetwork_Gam_V2_API {
 					? $li['displayName']
 					: basename( $li['name'] );
 
-				// Apply site filter keyword if set.
+				// Apply site filter keyword if set (fallback / additional filter).
 				if ( $filter_keyword && stripos( $label, $filter_keyword ) === false && stripos( $id, $filter_keyword ) === false ) {
 					continue;
 				}
@@ -188,6 +194,7 @@ class Equinenetwork_Gam_V2_API {
 					'id'            => $id,
 					'gam_id'        => $gam_id,
 					'name'          => $label,
+					'status'        => isset( $li['entityStatus'] ) ? $li['entityStatus'] : ( isset( $li['deliveryStatus'] ) ? $li['deliveryStatus'] : ( isset( $li['status'] ) ? $li['status'] : '' ) ),
 					'resource_name' => $li['name'] ?? '',
 					'start_time'    => isset( $li['startTime'] ) ? $li['startTime'] : '',
 					'end_time'      => isset( $li['endTime'] )   ? $li['endTime']   : '',
@@ -481,69 +488,6 @@ class Equinenetwork_Gam_V2_API {
 		}
 
 		return isset( $body['values'] ) ? $body['values'] : array();
-	}
-
-	/**
-	 * Fetches creative image URLs for a GAM-driven wrap takeover.
-	 * Matches creatives by name: containing LEFT, RIGHT, or BG/BACKGROUND.
-	 * Returns array with keys 'left', 'right', 'bg' => image URL strings.
-	 */
-	public function get_wrap_creatives( $gam_line_item_id, $force_refresh = false ) {
-		if ( ! $this->is_configured() || empty( $gam_line_item_id ) ) return array();
-
-		$cache_key = 'engam_v2_wrap_cr_' . $gam_line_item_id;
-		if ( ! $force_refresh ) {
-			$cached = get_transient( $cache_key );
-			if ( $cached !== false ) return $cached;
-		}
-
-		$token = $this->get_access_token();
-		if ( is_wp_error( $token ) ) return array();
-
-		$network_code = preg_replace( '/[^0-9]/', '', $this->network_code );
-		$rest_base    = 'https://admanager.googleapis.com/v1/networks/' . $network_code;
-
-		$auth_headers = array(
-			'Authorization' => 'Bearer ' . $token,
-			'Content-Type'  => 'application/json',
-		);
-
-		// ── Attempt 1: REST direct GET by creative ID (test with known IDs) ────
-		// The list endpoint 404s but individual GET may still work.
-		$test_ids      = array( '138561824776', '138561824980', '138561824899' );
-		$rest_id_tests = array();
-		foreach ( $test_ids as $tid ) {
-			$r      = wp_remote_get( $rest_base . '/creatives/' . $tid, array( 'timeout' => 15, 'headers' => $auth_headers ) );
-			$status = is_wp_error( $r ) ? $r->get_error_message() : wp_remote_retrieve_response_code( $r );
-			$body   = is_wp_error( $r ) ? '' : substr( wp_remote_retrieve_body( $r ), 0, 300 );
-			$rest_id_tests[ $tid ] = array( 'status' => $status, 'body' => $body );
-		}
-
-		// ── Attempt 2: REST lineItemCreativeAssociations sub-resource ────────
-		$lica_url    = $rest_base . '/lineItems/' . (int) $gam_line_item_id . '/lineItemCreativeAssociations';
-		$lica_resp   = wp_remote_get( $lica_url, array( 'timeout' => 15, 'headers' => $auth_headers ) );
-		$lica_status = is_wp_error( $lica_resp ) ? $lica_resp->get_error_message() : wp_remote_retrieve_response_code( $lica_resp );
-		$lica_raw    = is_wp_error( $lica_resp ) ? '' : substr( wp_remote_retrieve_body( $lica_resp ), 0, 400 );
-
-		$creative_ids = array();
-
-		$result = array( 'left' => '', 'right' => '', 'bg' => '', '_debug' => array(
-			'rest_direct_by_id'  => $rest_id_tests,
-			'rest_lica_status'   => $lica_status,
-			'rest_lica_raw'      => $lica_raw,
-			'creative_ids'       => $creative_ids,
-			'matched'            => array(),
-		) );
-
-		return $result;
-	}
-
-	/**
-	 * Returns raw debug info from get_wrap_creatives for a given line item ID.
-	 * Used by the admin AJAX test action.
-	 */
-	public function debug_wrap_creatives( $gam_line_item_id ) {
-		return $this->get_wrap_creatives( $gam_line_item_id, true );
 	}
 
 	/**

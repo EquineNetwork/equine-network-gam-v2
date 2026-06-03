@@ -24,6 +24,10 @@ foreach ( $carousels as $car ) {
     );
 }
 
+$all_stackers   = get_option( 'engam_v2_stackers_list', array() );
+if ( ! is_array( $all_stackers ) ) $all_stackers = array();
+$stacker_active = count( array_filter( $all_stackers, function( $s ) { return ! empty( $s['active'] ); } ) );
+
 $all_lbs        = Equinenetwork_Gam_V2_Leaderboard::get_all();
 $lb_active      = count( array_filter( $all_lbs, function( $lb ) { return ! empty( $lb['active'] ); } ) );
 $lb_header_on   = count( array_filter( $all_lbs, function( $lb ) { return ! empty( $lb['active'] ) && ( ! isset( $lb['position'] ) || $lb['position'] === 'header' ); } ) ) > 0;
@@ -174,159 +178,72 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
     </div>
 </section>
 
-<!-- AUTO-INJECTED SLOTS -->
-<div style="margin:0 0 8px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:900;color:#555">Auto-Injected Slots</div>
-<div class="eg-mini-grid">
-    <?php
-    $auto_slots = array(
-        array( 'label' => 'Masthead',             'count' => (int) $masthead_on,  'link' => 'engam-v2-takeovers' ),
-        array( 'label' => 'Wrap Takeover',        'count' => (int) $wrap_on,      'link' => 'engam-v2-takeovers' ),
-        array( 'label' => 'Header Leaderboard',   'count' => (int) $lb_header_on, 'link' => 'engam-v2-leaderboards' ),
-        array( 'label' => 'Footer Leaderboard',   'count' => (int) $lb_footer_on, 'link' => 'engam-v2-leaderboards' ),
-    );
-    foreach ( $auto_slots as $slot ) :
-    ?>
-    <a href="<?php echo esc_url( admin_url( 'admin.php?page=' . $slot['link'] ) ); ?>" style="text-decoration:none">
-    <div style="background:#fff;border:1px solid #deded8;padding:12px 14px;display:flex;align-items:baseline;justify-content:space-between;gap:10px">
-        <small style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:900;color:#555;line-height:1.2"><?php echo esc_html( $slot['label'] ); ?></small>
-        <strong style="font-size:24px;letter-spacing:-1px;line-height:1;color:<?php echo $slot['count'] > 0 ? '#129b6f' : '#bbb'; ?>"><?php echo $slot['count'] > 0 ? 'On' : 'Off'; ?></strong>
-    </div>
-    </a>
+<!-- ACTIVE AD PLACEMENT METRICS -->
+<?php
+$med_half = isset( $ad_slot_counts['med_half'] ) ? (int) $ad_slot_counts['med_half'] : 0;
+
+// Leaderboards: hardcoded header/footer (active) + Elementor widget placements.
+$m_leaderboard = $lb_active + (int) ( $ad_slot_counts['leaderboard'] ?? 0 );
+// Elementor widget placements by size.
+$m_medium_rect = (int) ( $ad_slot_counts['medium_rect'] ?? 0 ) + $med_half;
+$m_half_page   = (int) ( $ad_slot_counts['half_page'] ?? 0 ) + $med_half;
+
+// Carousels: active AND placed on a page.
+$m_carousel = 0;
+foreach ( $carousels as $car ) {
+    $is_active = ! ( isset( $car['active'] ) && empty( $car['active'] ) );
+    $usage     = class_exists( 'Equinenetwork_Gam_V2_Carousel_Render' )
+        ? Equinenetwork_Gam_V2_Carousel_Render::usage( $car['id'] ?? '' )
+        : array();
+    if ( $is_active && ! empty( $usage ) ) $m_carousel++;
+}
+
+// Takeovers split by type (active only).
+$m_masthead = count( array_filter( $all_takeovers, function( $t ) { return ! empty( $t['active'] ) && ( ( $t['type'] ?? 'wrap' ) === 'masthead' ); } ) );
+$m_wrap     = count( array_filter( $all_takeovers, function( $t ) { return ! empty( $t['active'] ) && ( ( $t['type'] ?? 'wrap' ) === 'wrap' ); } ) );
+
+// Stackers: single global injection config (migrated from legacy list).
+$stk_settings = get_option( 'engam_v2_stacker_settings', null );
+if ( is_array( $stk_settings ) ) {
+    $m_stacker = ! empty( $stk_settings['active'] ) ? 1 : 0;
+} else {
+    $m_stacker = $stacker_active > 0 ? 1 : 0;
+}
+
+$metric_cards = array(
+    array( 'label' => 'Leaderboards',     'count' => $m_leaderboard, 'link' => 'engam-v2-leaderboards' ),
+    array( 'label' => 'Medium Rectangle', 'count' => $m_medium_rect, 'link' => null ),
+    array( 'label' => 'Half Page',        'count' => $m_half_page,   'link' => null ),
+    array( 'label' => 'Carousel',         'count' => $m_carousel,    'link' => 'engam-v2-carousels' ),
+    array( 'label' => 'Masthead',         'count' => $m_masthead,    'link' => 'engam-v2-takeovers' ),
+    array( 'label' => 'Wrap Takeover',    'count' => $m_wrap,        'link' => 'engam-v2-takeovers' ),
+    array( 'label' => 'Stackers',         'count' => $m_stacker,     'link' => 'engam-v2-stackers' ),
+    array( 'label' => "Sponsor ID's",     'count' => $sponsor_count, 'link' => 'engam-v2-campaigns' ),
+);
+?>
+<div style="margin:0 0 8px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:900;color:#555">Active Ad Placements</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
+    <?php foreach ( $metric_cards as $mc ) :
+        $count    = (int) $mc['count'];
+        $tag_attr = $count > 0 ? '' : ' style="background:#eee;color:#999"';
+        ob_start();
+        ?>
+        <div class="eg-card">
+            <div class="eg-head">
+                <h2><?php echo esc_html( $mc['label'] ); ?></h2>
+                <span class="eg-tag"<?php echo $tag_attr; // phpcs:ignore ?>><?php echo $count; ?> Active</span>
+            </div>
+        </div>
+        <?php
+        $card = ob_get_clean();
+        if ( $mc['link'] ) :
+        ?>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=' . $mc['link'] ) ); ?>" style="text-decoration:none;color:inherit"><?php echo $card; // phpcs:ignore ?></a>
+        <?php else : ?>
+        <?php echo $card; // phpcs:ignore ?>
+        <?php endif; ?>
     <?php endforeach; ?>
 </div>
-
-<!-- AD PLACEMENTS -->
-<div style="margin:0 0 8px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:900;color:#555">Ad Placements &mdash; Elementor (<?php echo (int) $ad_slot_total; ?> total)</div>
-<div class="eg-mini-grid">
-    <?php
-    $med_half = isset( $ad_slot_counts['med_half'] ) ? (int) $ad_slot_counts['med_half'] : 0;
-    $by_size  = array(
-        'Leaderboard'       => (int) ( $ad_slot_counts['leaderboard'] ?? 0 ) + $lb_active,
-        'Medium Rectangle'  => (int) ( $ad_slot_counts['medium_rect'] ?? 0 ) + $med_half,
-        'Half Page'         => (int) ( $ad_slot_counts['half_page'] ?? 0 ) + $med_half,
-        'Takeover'          => $active_takeovers,
-    );
-    if ( ! empty( $ad_slot_counts['custom'] ) ) {
-        $by_size['Custom Size'] = (int) $ad_slot_counts['custom'];
-    }
-    foreach ( $by_size as $label => $count ) :
-    ?>
-    <div style="background:#fff;border:1px solid #deded8;padding:12px 14px;display:flex;align-items:baseline;justify-content:space-between;gap:10px">
-        <small style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:900;color:#555;line-height:1.2"><?php echo esc_html( $label ); ?></small>
-        <strong style="font-size:24px;letter-spacing:-1px;line-height:1;color:<?php echo $count > 0 ? '#050505' : '#bbb'; ?>"><?php echo $count; ?></strong>
-    </div>
-    <?php endforeach; ?>
-</div>
-
-<!-- CARDS -->
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;margin-bottom:0">
-
-    <div class="eg-card">
-        <div class="eg-head">
-            <h2>Takeovers</h2>
-            <span class="eg-tag"><?php echo $active_takeovers; ?> Active</span>
-        </div>
-        <div class="eg-body" style="font-size:13px;color:#555">
-            <?php if ( empty( $active_to_rows ) ) : ?>
-                <p style="margin:0 0 12px">No takeovers are currently active. Build one on the Takeovers page.</p>
-            <?php else : ?>
-                <table class="eg-table" style="margin-bottom:14px">
-                    <thead>
-                        <tr><th>Name</th><th>Type</th><th>Window</th></tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ( $active_to_rows as $r ) :
-                            $state_color = $r['state'] === 'Live now' ? '#050505' : '#999';
-                            $type_color  = $r['type'] === 'Masthead' ? '#1d4ed8' : '#374151';
-                        ?>
-                        <tr>
-                            <td style="vertical-align:top">
-                                <div style="font-weight:700"><?php echo esc_html( $r['name'] ); ?></div>
-                                <div style="font-size:11px;color:<?php echo esc_attr( $state_color ); ?>;font-weight:700;text-transform:uppercase;letter-spacing:.04em"><?php echo esc_html( $r['state'] ); ?></div>
-                            </td>
-                            <td style="vertical-align:top">
-                                <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:<?php echo esc_attr( $type_color ); ?>;color:#fff;white-space:nowrap"><?php echo esc_html( $r['type'] ); ?></span>
-                            </td>
-                            <td style="vertical-align:top;font-size:12px"><?php echo esc_html( $r['start'] ); ?><br>&rarr; <?php echo esc_html( $r['end'] ); ?></td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            <?php endif; ?>
-            <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-takeovers' ) ); ?>" class="eg-btn sm">Manage Takeovers</a>
-        </div>
-    </div>
-
-    <div class="eg-card">
-        <div class="eg-head">
-            <h2>Carousels</h2>
-            <span class="eg-tag"><?php echo (int) $placed_carousels; ?> Placed</span>
-        </div>
-        <div class="eg-body" style="font-size:13px;color:#555">
-            <?php if ( empty( $carousel_rows ) ) : ?>
-                <p style="margin:0 0 12px">No carousels built yet.</p>
-            <?php else : ?>
-                <table class="eg-table" style="margin-bottom:14px">
-                    <thead>
-                        <tr><th>Carousel</th><th>Placed On</th></tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ( $carousel_rows as $row ) : ?>
-                        <tr>
-                            <td style="font-weight:700;vertical-align:top"><?php echo esc_html( $row['name'] ); ?></td>
-                            <td>
-                                <?php if ( empty( $row['usage'] ) ) : ?>
-                                    <span style="color:#999">Not placed</span>
-                                <?php else : ?>
-                                    <?php foreach ( $row['usage'] as $u ) :
-                                        $badge = $u['status'] !== 'publish' ? ' <em style="color:#999;font-style:normal">(' . esc_html( $u['status'] ) . ')</em>' : '';
-                                    ?>
-                                        <div style="margin-bottom:2px">
-                                            <a href="<?php echo esc_url( $u['edit'] ); ?>" style="text-decoration:none;color:#050505;font-weight:700"><?php echo esc_html( $u['title'] ); ?></a><?php echo $badge; // phpcs:ignore ?>
-                                            <?php if ( $u['view'] ) : ?><a href="<?php echo esc_url( $u['view'] ); ?>" target="_blank" rel="noopener" title="View" style="text-decoration:none;margin-left:4px">↗</a><?php endif; ?>
-                                        </div>
-                                    <?php endforeach; ?>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            <?php endif; ?>
-            <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-carousels' ) ); ?>" class="eg-btn sm">Manage Carousels</a>
-        </div>
-    </div>
-
-    <div class="eg-card">
-        <div class="eg-head">
-            <h2>Leaderboards</h2>
-            <span class="eg-tag"><?php echo $lb_active; ?> Active</span>
-        </div>
-        <div class="eg-body" style="font-size:13px;color:#555">
-            <?php if ( empty( $all_lbs ) ) : ?>
-                <p style="margin:0 0 12px">No leaderboards configured yet.</p>
-            <?php else : ?>
-                <table class="eg-table" style="margin-bottom:14px">
-                    <thead><tr><th>Name</th><th>Position</th><th>Status</th></tr></thead>
-                    <tbody>
-                        <?php foreach ( $all_lbs as $lb ) :
-                            $pos = isset( $lb['position'] ) && $lb['position'] === 'footer' ? 'Footer' : 'Header';
-                            $on  = ! empty( $lb['active'] );
-                        ?>
-                        <tr>
-                            <td style="font-weight:700"><?php echo esc_html( $lb['name'] ?: '(untitled)' ); ?></td>
-                            <td><?php echo esc_html( $pos ); ?></td>
-                            <td><span class="eg-badge <?php echo $on ? 'active' : 'inactive'; ?>"><?php echo $on ? 'Active' : 'Off'; ?></span></td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            <?php endif; ?>
-            <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-leaderboards' ) ); ?>" class="eg-btn sm">Manage Leaderboards</a>
-        </div>
-    </div>
-
-</div><!-- cards grid -->
 
 </div><!-- .eg-content -->
 
