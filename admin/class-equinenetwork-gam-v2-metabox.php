@@ -94,11 +94,12 @@ class Equinenetwork_Gam_V2_Metabox {
 		$sponsors = $api->get_sponsor_options();
 		if ( ! empty( $sponsors ) ) {
 			foreach ( $sponsors as $s ) {
-				// Append the Sponsor ID so duplicate advertiser names (e.g. the
-				// several "WF Young" rows) can be told apart in the dropdown.
+				// Append the Sponsorship ID (e.g. "videotips_hr_bimeda") so duplicate
+				// advertiser names like the several "WF Young"/"Bimeda" rows can be
+				// told apart in the dropdown.
 				$options[ $s['id'] ] = ( $s['name'] === $s['id'] )
 					? $s['id']
-					: $s['name'] . ' — ' . $s['id'];
+					: $s['name'] . ' - ' . $s['id'];
 			}
 			return $options;
 		}
