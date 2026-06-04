@@ -513,7 +513,9 @@ class Equinenetwork_Gam_V2_Admin {
 		}
 
 		$warnings = get_option( 'engam_v2_slot_warnings', array() );
-		$key      = $configured_id . '_' . $served_id;
+		// Key includes the slot so each affected rail (left/right/bg) is tracked
+		// separately — a foreign line item often wins all three at once.
+		$key      = $configured_id . '_' . $served_id . '_' . $slot;
 
 		$warnings[ $key ] = array(
 			'takeover_name' => $takeover_name,
@@ -558,15 +560,51 @@ class Equinenetwork_Gam_V2_Admin {
 		$warnings = get_option( 'engam_v2_slot_warnings', array() );
 		if ( empty( $warnings ) ) return;
 
+		// Auto-expire stale warnings. A live conflict re-stamps its own entry on every
+		// page load where it is detected, so anything not seen in the last 6 hours is
+		// almost certainly already resolved in GAM and shouldn't keep nagging.
+		$max_age = 6 * HOUR_IN_SECONDS;
+		$now_ts  = current_time( 'timestamp' );
+		$pruned  = false;
+		foreach ( $warnings as $wk => $wv ) {
+			$wt = ! empty( $wv['time'] ) ? strtotime( $wv['time'] ) : 0;
+			if ( $wt && ( $now_ts - $wt ) > $max_age ) {
+				unset( $warnings[ $wk ] );
+				$pruned = true;
+			}
+		}
+		if ( $pruned ) {
+			if ( empty( $warnings ) ) {
+				delete_option( 'engam_v2_slot_warnings' );
+			} else {
+				update_option( 'engam_v2_slot_warnings', $warnings );
+			}
+		}
+		if ( empty( $warnings ) ) return;
+
 		$nonce        = wp_create_nonce( 'engam_v2_ajax' );
 		$manage_url   = admin_url( 'admin.php?page=engam-v2-takeovers' );
 		$network_code = preg_replace( '/[^0-9]/', '', get_option( 'equinenetwork_gam_v2_id', '' ) );
 
+		// Look up line-item names from the cached list so the table shows
+		// "NRS_EQN-MAR26 (7323054907)" instead of a bare ID the admin has to click.
+		$li_names = array();
+		$cached_li = get_transient( 'engam_v2_line_items' );
+		if ( is_array( $cached_li ) ) {
+			foreach ( $cached_li as $li ) {
+				if ( ! empty( $li['gam_id'] ) && ! empty( $li['name'] ) ) {
+					$li_names[ (string) $li['gam_id'] ] = $li['name'];
+				}
+			}
+		}
+
 		echo '<div class="notice notice-warning engam-slot-warning" style="border-left-color:#d0ff00;">';
 		echo '<p><strong>⚠ EN Ads — GAM Slot Mismatch Detected</strong></p>';
-		echo '<p>GAM is delivering a different line item than configured in one or more takeover slots. '
-			. 'This usually means another active line item in GAM is competing and winning the auction — '
-			. 'check GAM to pause or adjust priority for the unexpected line item.</p>';
+		echo '<p>GAM is filling a takeover slot with a <strong>different line item</strong> than the one configured. '
+			. 'This is usually a regular display campaign (not another takeover) whose creative sizes overlap the '
+			. 'takeover rails — it becomes eligible for the slot and wins the auction. To fix it in GAM, raise the '
+			. 'takeover line item&#39;s priority above the competing one, or stop the competing line item from targeting '
+			. 'the takeover slot. The plugin cannot force which line item wins — GAM&#39;s auction decides.</p>';
 		echo '<table style="border-collapse:collapse;width:100%;margin-top:8px;font-size:13px">';
 		echo '<thead><tr style="background:#f9f9f9">'
 			. '<th style="padding:6px 10px;text-align:left;border:1px solid #ddd">Takeover</th>'
@@ -580,12 +618,18 @@ class Equinenetwork_Gam_V2_Admin {
 		foreach ( $warnings as $key => $w ) {
 			$page_link = ! empty( $w['url'] ) ? ' <a href="' . esc_url( $w['url'] ) . '" target="_blank" style="font-size:11px">(view page)</a>' : '';
 			$gam_base  = $network_code ? 'https://admanager.google.com/' . $network_code . '#delivery/line_item/detail/line_item_id=' : '';
-			$conf_link = $gam_base && ! empty( $w['configured_id'] )
-				? '<a href="' . esc_url( $gam_base . $w['configured_id'] ) . '" target="_blank" style="color:#22c55e;font-weight:bold">' . esc_html( $w['configured_id'] ) . '</a>'
-				: '<span style="color:#22c55e;font-weight:bold">' . esc_html( $w['configured_id'] ) . '</span>';
-			$served_link = $gam_base && ! empty( $w['served_id'] )
-				? '<a href="' . esc_url( $gam_base . $w['served_id'] ) . '" target="_blank" style="color:#ef4444;font-weight:bold">' . esc_html( $w['served_id'] ) . '</a>'
-				: '<span style="color:#ef4444;font-weight:bold">' . esc_html( $w['served_id'] ) . '</span>';
+
+			$conf_id   = (string) ( $w['configured_id'] ?? '' );
+			$served_id = (string) ( $w['served_id'] ?? '' );
+			$conf_name   = isset( $li_names[ $conf_id ] )   ? '<br><span style="font-size:11px;color:#555">' . esc_html( $li_names[ $conf_id ] ) . '</span>'   : '';
+			$served_name = isset( $li_names[ $served_id ] ) ? '<br><span style="font-size:11px;color:#555">' . esc_html( $li_names[ $served_id ] ) . '</span>' : '';
+
+			$conf_link = $gam_base && $conf_id
+				? '<a href="' . esc_url( $gam_base . $conf_id ) . '" target="_blank" style="color:#22c55e;font-weight:bold">' . esc_html( $conf_id ) . '</a>' . $conf_name
+				: '<span style="color:#22c55e;font-weight:bold">' . esc_html( $conf_id ) . '</span>' . $conf_name;
+			$served_link = $gam_base && $served_id
+				? '<a href="' . esc_url( $gam_base . $served_id ) . '" target="_blank" style="color:#ef4444;font-weight:bold">' . esc_html( $served_id ) . '</a>' . $served_name
+				: '<span style="color:#ef4444;font-weight:bold">' . esc_html( $served_id ) . '</span>' . $served_name;
 			echo '<tr>'
 				. '<td style="padding:6px 10px;border:1px solid #ddd">' . esc_html( $w['takeover_name'] ) . '</td>'
 				. '<td style="padding:6px 10px;border:1px solid #ddd">' . esc_html( $w['slot'] ) . '</td>'
