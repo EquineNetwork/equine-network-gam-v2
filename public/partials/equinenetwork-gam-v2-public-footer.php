@@ -216,6 +216,15 @@ googletag.cmd.push(function() {
 							}
 							wrapper.classList.add('engam-empty');
 
+							// Mid-content leaderboard injected into the page body (e.g. a
+							// calendar): collapse only its own band, never walk up to the
+							// page's containers or the surrounding content would disappear.
+							var engamMidBand = wrapper.closest ? wrapper.closest('.engam-leaderboard-midpoint') : null;
+							if ( engamMidBand ) {
+								engamMidBand.classList.add('engam-empty');
+								return;
+							}
+
 							// If this ad lives inside an EN carousel, the carousel
 							// collapses its own empty slide via CSS (:has(.engam-empty)).
 							// Do NOT walk up to the Elementor containers — that would
