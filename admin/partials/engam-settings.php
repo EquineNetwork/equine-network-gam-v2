@@ -257,12 +257,17 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                             <button type="button" id="engam-ms-tabs-refresh"
                                 style="display:none;border:none;background:none;padding:0;cursor:pointer;font-size:11px;font-weight:700;color:#555;text-transform:none;letter-spacing:0">&#8635; Refresh list</button>
                         </label>
-                        <input class="eg-input" type="text" name="engam_v2_ms_sheet_name" id="engam-ms-sheet"
-                            list="engam-ms-tablist" autocomplete="off"
+                        <!-- Hidden input always carries the saved value for form submission -->
+                        <input type="hidden" name="engam_v2_ms_sheet_name" id="engam-ms-sheet-value"
+                            value="<?php echo esc_attr( $ms_sheet ); ?>">
+                        <!-- Select shown once tabs are loaded; text input shown as fallback -->
+                        <select class="eg-input" id="engam-ms-sheet-select" style="display:none">
+                            <option value="<?php echo esc_attr( $ms_sheet ); ?>"><?php echo esc_html( $ms_sheet ); ?></option>
+                        </select>
+                        <input class="eg-input" type="text" id="engam-ms-sheet" autocomplete="off"
                             value="<?php echo esc_attr( $ms_sheet ); ?>"
                             placeholder="HR">
-                        <datalist id="engam-ms-tablist"></datalist>
-                        <p class="eg-hint">Start typing to search your tabs, or pick one from the list. Matches the tab name exactly as it appears in Excel (case-sensitive).</p>
+                        <p class="eg-hint" id="engam-ms-sheet-hint">The tab name exactly as it appears in Excel (e.g. <code>HR</code>). Case-sensitive.</p>
                     </div>
 
                     <!-- Advanced: Azure (only needed when the file is NOT shared via "Anyone with the link") -->
@@ -385,35 +390,56 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         el.textContent      = data.data || (data.success ? 'OK' : 'Error');
     }
 
-    // ── Worksheet/tab picker (searchable combobox via <datalist>) ───────
-    var tabInput   = document.getElementById('engam-ms-sheet');
-    var tabList    = document.getElementById('engam-ms-tablist');
+    // ── Worksheet/tab picker ──────────────────────────────────────────
+    var tabValue   = document.getElementById('engam-ms-sheet-value');   // hidden input → form value
+    var tabSelect  = document.getElementById('engam-ms-sheet-select');  // <select> shown when loaded
+    var tabText    = document.getElementById('engam-ms-sheet');         // text input fallback
     var tabRefresh = document.getElementById('engam-ms-tabs-refresh');
+    var tabHint    = document.getElementById('engam-ms-sheet-hint');
     var msFileUrl  = document.getElementById('engam-ms-file-url');
 
-    function fillTabs(tabs) {
-        if (!tabList) return;
-        tabList.innerHTML = '';
-        (tabs || []).forEach(function(name){
+    // Keep the hidden value in sync whichever control is visible.
+    if (tabSelect) tabSelect.addEventListener('change', function(){
+        if (tabValue) tabValue.value = tabSelect.value;
+    });
+    if (tabText) tabText.addEventListener('input', function(){
+        if (tabValue) tabValue.value = tabText.value;
+    });
+
+    function fillTabs(tabs, current) {
+        if (!tabSelect) return;
+        tabSelect.innerHTML = '';
+        tabs.forEach(function(name){
             var opt = document.createElement('option');
             opt.value = name;
-            tabList.appendChild(opt);
+            opt.textContent = name;
+            if (name === current) opt.selected = true;
+            tabSelect.appendChild(opt);
         });
-        if (tabInput) tabInput.placeholder = (tabs && tabs.length) ? 'Pick a tab or type a name' : 'HR';
-        if (tabRefresh) tabRefresh.style.display = (tabs && tabs.length) ? '' : 'none';
+        // If the saved tab isn't in the list, add it so it isn't silently lost.
+        if (current && !tabs.includes(current)) {
+            var opt = document.createElement('option');
+            opt.value = current; opt.textContent = current; opt.selected = true;
+            tabSelect.insertBefore(opt, tabSelect.firstChild);
+        }
+        // Show the select, hide the text input.
+        tabSelect.style.display = '';
+        if (tabText)    tabText.style.display    = 'none';
+        if (tabRefresh) tabRefresh.style.display = '';
+        if (tabHint)    tabHint.textContent = 'Pick from your ' + tabs.length + ' tabs, or type a name not in the list.';
+        if (tabValue)   tabValue.value = tabSelect.value;
     }
 
     function loadTabs(force) {
-        if (!tabInput || !tabList) return;
-        // Need a saved file URL for the server-side lookup to have anything to read.
+        if (!tabSelect) return;
         if (msFileUrl && !msFileUrl.value.trim()) return;
         if (tabRefresh) tabRefresh.textContent = '↻ Loading…';
         ajaxPost('engam_v2_ms_tabs', force ? '&force=1' : '', function(data){
             if (tabRefresh) tabRefresh.textContent = '↻ Refresh list';
             if (data && data.success && data.data && data.data.tabs && data.data.tabs.length) {
-                fillTabs(data.data.tabs);
+                fillTabs(data.data.tabs, data.data.current || (tabValue ? tabValue.value : ''));
             }
-            // On failure, leave the field as free text — Test Connection surfaces why.
+            // On failure, leave the text input visible — Test Connection shows why.
         });
     }
 
