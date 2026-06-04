@@ -85,14 +85,29 @@ var registeredDivIDs = {};
 window.googletag = window.googletag || {cmd: []};
 googletag.cmd.push(function() {
 
-	// Filter out zero-area sizes from a size array.
+	// Normalize to an array of valid [w,h] size pairs, dropping zero-area sizes.
+	// Accepts either a single pair ([728,90]) or an array of pairs
+	// ([[320,50],[728,90]]). The Elementor widget and the stacker emit
+	// sizeDesktop/sizeMobile as single pairs; without this normalization they
+	// failed the Array.isArray(s) test, validSizes returned null, and the size
+	// mapping below was silently skipped — so GAM could serve a 320x50 creative
+	// into a 728x90 desktop leaderboard.
 	function validSizes(arr) {
-		if (!Array.isArray(arr)) return null;
+		if (!Array.isArray(arr) || arr.length === 0) return null;
+		// A single pair like [728, 90] → wrap as [[728, 90]].
+		if (typeof arr[0] === 'number') arr = [arr];
 		var filtered = arr.filter(function(s) {
 			return Array.isArray(s) ? (s[0] > 0 && s[1] > 0) : false;
 		});
 		return filtered.length ? filtered : null;
 	}
+
+	// Global GPT config — must be set once before any slot is defined.
+	googletag.setConfig({centering: true});
+	// Defer fetching below-the-fold slots until they are near the viewport.
+	// Must be called before enableServices(); incompatible with enableSingleRequest().
+	googletag.pubads().enableLazyLoad({fetchMarginPercent:500,renderMarginPercent:200,mobileScaling:2.0});
+	var displayQueue = [];
 
 	for (var i = 0; i < adSlots.length; i++) {
 		var slot       = adSlots[i];
@@ -191,9 +206,7 @@ googletag.cmd.push(function() {
 
 			slot.innerHTML += injectedHTML;
 
-			if ( adAlign === 'center' ) googletag.setConfig({centering: true});
-			googletag.enableServices();
-			googletag.display(divID);
+			displayQueue.push(divID);
 		}
 
 		popup = false;
@@ -310,6 +323,13 @@ googletag.cmd.push(function() {
 								filledSlot.style.maxWidth  = event.size[0] + 'px';
 								filledSlot.style.height   = event.size[1] + 'px';
 								filledSlot.style.maxHeight = event.size[1] + 'px';
+								// Center the sized div in its full-width parent wrapper.
+								// Prevents off-screen displacement when creative width < container.
+								var wrap = filledSlot.closest('.equinenetworkad');
+								if (!wrap || wrap.dataset.align === 'center' || !wrap.dataset.align) {
+									filledSlot.style.display = 'block';
+									filledSlot.style.margin  = '0 auto';
+								}
 							}
 							var modal = document.getElementById('adModal');
 							if ( modal && filledSlot.querySelector('iframe') ) modal.style.display = 'block';
@@ -320,6 +340,10 @@ googletag.cmd.push(function() {
 		}
 		callbacks++;
 	}
+	// Register services once after all slots are defined (calling inside the loop
+	// was a no-op after the first call but forced GPT to re-validate on every iteration).
+	googletag.enableServices();
+	displayQueue.forEach(function(id){googletag.display(id);});
 });
 
 }, false);

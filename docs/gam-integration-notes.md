@@ -216,6 +216,9 @@ band, then JS moves it into the page body of the targeted page(s).
 | Settings (GAM API card, flat‑icon redesign) | `admin/partials/engam-settings.php` |
 | Dashboard placement cards | `admin/partials/engam-dashboard.php` |
 | Diagnostics (Test Connection) | `Equinenetwork_Gam_V2_API::diagnose()` → admin AJAX `ajax_test_connection()` |
+| Tab name list (XLSX + Graph) | `Equinenetwork_Gam_V2_API::list_worksheet_names()` → `get_ms_link_worksheet_names()` / `get_ms_worksheet_names()` |
+| Tab name AJAX endpoint | `Equinenetwork_Gam_V2_Admin::ajax_ms_tabs()` (`wp_ajax_engam_v2_ms_tabs`) |
+| Sponsor dropdown label format ("Name - id") | `admin/class-equinenetwork-gam-v2-metabox.php::get_campaign_options()` and `public/class-equinenetwork-gam-v2-carousel-render.php::sponsor_options()` |
 
 **Tip:** the **Test Connection** button runs `diagnose()`, which executes the full
 ad‑unit report with step‑by‑step logging (ad unit IDs, create/run/poll/fetch, a
@@ -241,8 +244,9 @@ actually returning.
 | 3.3.50 | Sponsor sheet: Microsoft Graph (Azure app) OneDrive/SharePoint path |
 | 3.3.51 | Sponsor sheet: no‑Azure "Anyone with the link" path (download + XLSX parse) |
 | 3.3.52 | Sponsor dropdowns show "Name - Sponsorship ID" (e.g. `Bimeda - videotips_hr_bimeda`) so duplicate advertiser names are distinguishable |
-| 3.3.53 | Worksheet/Tab Name is a searchable combobox (`<datalist>`) populated from the file's real tabs; new `engam_v2_ms_tabs` AJAX + `list_worksheet_names()` |
-| 3.3.54 | Tab picker: `<datalist>` → real `<select>` (datalist only showed options matching the current value, so the dropdown looked empty); hidden input carries the value |
+| 3.3.53 | Worksheet/Tab Name gains `engam_v2_ms_tabs` AJAX endpoint + `list_worksheet_names()` to fetch real tab names from the file; first UI used `<datalist>` (superseded by v3.3.54) |
+| 3.3.54 | Tab picker: `<datalist>` → real `<select>` + hidden input (datalist only shows suggestions matching the current typed value — not a true dropdown); version bump to deliver the fix via the update checker |
+| 3.3.55 | **Leaderboard size-mapping fix**: `validSizes()` now normalizes a single `[w,h]` pair, so the Elementor widget's leaderboard slot builds a viewport size map and GAM can't serve a 320x50 creative on desktop (see §8) |
 
 ---
 
@@ -300,3 +304,116 @@ column heuristic), used by all three so behaviour is identical regardless of sou
 | Header row | ✅ auto-detected (skips the naming-convention title row at the top) |
 | Tab name | ⚠️ case-insensitive match, falls back to first sheet; Test Connection lists all tabs |
 | Anonymous link disabled / changed to "People in org" | ❌ breaks the link path → switch to Graph |
+
+### Sponsor dropdown labels (v3.3.52)
+
+All three sponsor dropdowns — the post-editor "EN Sponsor ID" meta box
+(`admin/class-equinenetwork-gam-v2-metabox.php`), the Carousel widget's "Lock to Sponsor"
+control, and the Takeover widget — display options as **`Advertiser Name - sponsorship_id`**
+(e.g. `Bimeda - videotips_hr_bimeda`, `WF Young (ShowSheen) - showsheen_wf_young`).
+
+**Why:** the HR tab in `Sponsorship IDs.xlsx` has several rows with the same advertiser name
+(multiple "WF Young" entries, multiple "Bimeda" entries, etc.). With name-only labels there
+was no way to tell which dropdown entry was which campaign.
+
+**Rules:**
+- If `name === id` (no separate display name), the label is just the id.
+- Separator is a plain hyphen (` - `), not an em-dash.
+- Sponsorship IDs are descriptive slugs, not numbers (e.g. `videotips_hr_bimeda`).
+- Both `get_campaign_options()` (metabox) and `sponsor_options()` (carousel renderer) apply
+  the same logic so all three dropdowns stay consistent.
+
+### Worksheet tab name picker (v3.3.53 / v3.3.54)
+
+The "Worksheet/Tab Name" field in the Sponsor Spreadsheet card is a real `<select>` dropdown
+populated on settings-page load from the file's actual tab names via AJAX.
+
+**Why `<datalist>` didn't work (the v3.3.53 mistake):**
+The first build (v3.3.53) used `<input type="text"> + <datalist>`. HTML `<datalist>` is a
+type-ahead suggestion aid — it only surfaces options that **match the current input value as
+typed**. With "HR" already in the field and the arrow clicked, the browser showed only "HR"
+back. Replaced with a proper `<select>` in v3.3.54.
+
+**The pattern (dynamic `<select>` in a WP settings form):**
+```html
+<!-- Hidden input is the only named field — it's what save_settings() reads -->
+<input type="hidden" name="engam_v2_ms_sheet_name" id="engam-ms-sheet-value" value="HR">
+<!-- Select shown after AJAX resolves; updates the hidden input on change -->
+<select id="engam-ms-sheet-select" style="display:none"> … </select>
+<!-- Text fallback shown until AJAX resolves, or if no file URL is configured -->
+<input type="text" id="engam-ms-sheet" value="HR" placeholder="HR">
+```
+The `<select>` is **unnamed** — it never submits. `tabSelect.addEventListener('change', …)`
+syncs the selection into the hidden input. The text fallback syncs via
+`tabText.addEventListener('input', …)`. The save handler is unchanged.
+
+**`engam_v2_ms_tabs` AJAX endpoint:**
+- Registered in `Equinenetwork_Gam_V2_Admin::__construct()` as `wp_ajax_engam_v2_ms_tabs`.
+- Handler: `ajax_ms_tabs()` — verifies nonce + `manage_options`, calls
+  `Equinenetwork_Gam_V2_API::list_worksheet_names( $force )`.
+- `list_worksheet_names()` routes to `get_ms_worksheet_names()` (Graph path) or
+  `get_ms_link_worksheet_names()` (share-link path) depending on `is_ms_configured()`.
+- `get_ms_link_worksheet_names()` downloads the XLSX via `ms_link_download()`, calls
+  `xlsx_sheet_names()`, and caches the result 12 h in transient `engam_v2_ms_worksheets`
+  (`CACHE_MS_SHEETS`). `$force = true` skips the cache.
+- Response: `{ "success": true, "data": { "tabs": ["AC","AHFEH",…], "current": "HR" } }`.
+
+**When the endpoint fires:**
+1. Automatically on settings page load when a file URL is saved.
+2. Automatically after a successful Test Connection (so a URL change is reflected immediately).
+3. On demand via the "Refresh" button (`force=1` skips the 12 h cache).
+
+**Edge case — saved tab not in returned list:**
+`fillTabs()` checks whether the option stored in `engam_v2_ms_sheet_name` is present in the
+fetched tab array. If not (tab was renamed in Excel), it inserts the saved value as the first
+selected option so it isn't silently discarded on the next Save.
+
+---
+
+## 8. Ad slot sizes & the viewport size mapping (don't reintroduce the 320x50-on-desktop bug)
+
+Every ad slot is a `<div class="equinenetworkad" data-sizeDesktop=… data-sizeMobile=…
+data-sizes=…>` consumed by the loop in
+`public/partials/equinenetwork-gam-v2-public-footer.php`. For a slot that has different
+desktop and mobile sizes (the **leaderboard**: 728x90 desktop / 320x50 mobile), GPT needs a
+**viewport size mapping** or GAM may serve *any* size in the slot's size array at *any*
+width — e.g. a 320x50 creative dropped into a 728x90 desktop leaderboard.
+
+### The mapping
+Built per slot in the footer, keyed off `data-sizeDesktop` / `data-sizeMobile`:
+```js
+googletag.sizeMapping()
+    .addSize([728, 0], validDsk)   // viewport ≥ 728px wide → desktop sizes
+    .addSize([0,   0], validMob)   // narrower → mobile sizes
+    .build();
+```
+It is applied with `gamSlot.defineSizeMapping(mapping)` **only when both `validDsk` and
+`validMob` are non-null.** `data-sizes` (the union of all sizes) is still what
+`defineSlot()` is called with; the mapping just restricts eligibility per viewport.
+
+### The trap: two emitters, two array shapes
+There are two places that emit these attributes, and they historically used **different
+shapes**:
+
+| Emitter | `data-sizeDesktop` shape |
+|---|---|
+| `public/class-equinenetwork-gam-v2-leaderboard.php` (standalone leaderboard band) | `[[728,90]]` — **array of pairs** ✅ |
+| `elementor/class-equinenetwork-gam-v2-widget.php` (EN Ad Slot widget) | `[728,90]` — **single pair** ⚠️ |
+| `public/class-equinenetwork-gam-v2-public.php` (stacker) | `[320,480]` — **single pair** ⚠️ |
+
+`validSizes()` originally filtered for **array** elements only, so a single pair like
+`[728,90]` (whose elements are numbers) filtered down to empty → returned `null` →
+`if (validDsk && validMob)` was false → **the size mapping was silently never built** for the
+widget. The widget's leaderboard therefore had no desktop/mobile restriction, and GAM could
+serve 320x50 on desktop. The standalone leaderboard band was unaffected because it already
+wrapped its sizes as `[[…]]`.
+
+### The fix (v3.3.55)
+`validSizes()` normalizes a single pair into an array of pairs before filtering:
+```js
+if (typeof arr[0] === 'number') arr = [arr];   // [728,90] → [[728,90]]
+```
+This is the central choke point all slots pass through, so it fixes the widget leaderboard
+**and** the stacker, and is backward-compatible with the already-correct `[[…]]` shape (e.g.
+`med_half`, takeover). When touching ad sizes, keep `validSizes()` tolerant of both shapes
+rather than forcing every emitter to agree.
