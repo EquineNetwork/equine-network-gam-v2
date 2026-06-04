@@ -243,6 +243,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     <th>Type</th>
                     <th>Schedule</th>
                     <th>Status</th>
+                    <th>GAM</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -263,13 +264,6 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         $start_fmt = ! empty( $to['schedule_start'] ) ? date_i18n( 'M j, Y', strtotime( $to['schedule_start'] ) ) : '—';
                         $end_fmt   = ! empty( $to['schedule_end'] )   ? date_i18n( 'M j, Y', strtotime( $to['schedule_end'] ) )   : '—';
                     }
-                    // Consistent "GAM ↗" deep link to the line item (shown when one is linked).
-                    $gam_badge = '';
-                    if ( $gam_li_key && $engam_list_net ) {
-                        $gam_badge = '<a href="https://admanager.google.com/' . esc_attr( $engam_list_net )
-                            . '#delivery/line_item/detail/line_item_id=' . rawurlencode( $gam_li_key )
-                            . '" target="_blank" rel="noopener" style="font-size:10px;background:#d0ff00;color:#111;padding:1px 6px;border-radius:3px;font-weight:700;margin-left:6px;text-decoration:none">GAM ↗</a>';
-                    }
                 ?>
                 <tr>
                     <td>
@@ -283,8 +277,16 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                             <span class="engam-type-badge-wrap">Wrap Takeover</span>
                         <?php endif; ?>
                     </td>
-                    <td style="font-size:12px;color:#555"><?php echo esc_html( $start_fmt ); ?> &rarr; <?php echo esc_html( $end_fmt ); ?><?php echo $gam_badge; // phpcs:ignore ?></td>
+                    <td style="font-size:12px;color:#555"><?php echo esc_html( $start_fmt ); ?> &rarr; <?php echo esc_html( $end_fmt ); ?></td>
                     <td><span class="eg-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $badge_label ); ?></span></td>
+                    <td>
+                        <?php if ( $gam_li_key && $engam_list_net ) : ?>
+                        <a href="https://admanager.google.com/<?php echo esc_attr( $engam_list_net ); ?>#delivery/line_item/detail/line_item_id=<?php echo rawurlencode( $gam_li_key ); ?>"
+                           target="_blank" rel="noopener" class="eg-btn sm" style="background:#d0ff00;color:#111;border-color:#d0ff00">View in GAM ↗</a>
+                        <?php else : ?>
+                        <span style="color:#bbb;font-size:12px">—</span>
+                        <?php endif; ?>
+                    </td>
                     <td>
                         <div class="eg-actions-cell">
                             <a href="<?php echo esc_url( add_query_arg( array( 'page' => 'engam-v2-takeovers', 'edit_to' => $to['id'] ), admin_url( 'admin.php' ) ) ); ?>"

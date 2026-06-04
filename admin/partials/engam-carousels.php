@@ -328,6 +328,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     <th>Status</th>
                     <th>Used On</th>
                     <th>Ads</th>
+                    <th>GAM</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -347,13 +348,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 ?>
                 <tr>
                     <td>
-                        <div class="eg-campaign-name"><?php echo esc_html( $car['name'] ); ?><?php
-                            if ( $car_gam_id && $engam_list_net ) {
-                                echo '<a href="https://admanager.google.com/' . esc_attr( $engam_list_net )
-                                    . '#delivery/line_item/detail/line_item_id=' . rawurlencode( $car_gam_id )
-                                    . '" target="_blank" rel="noopener" style="font-size:10px;background:#d0ff00;color:#111;padding:1px 6px;border-radius:3px;font-weight:700;margin-left:6px;text-decoration:none">GAM ↗</a>'; // phpcs:ignore
-                            }
-                        ?></div>
+                        <div class="eg-campaign-name"><?php echo esc_html( $car['name'] ); ?></div>
                         <code class="engam-car-shortcode" data-shortcode="<?php echo esc_attr( $shortcode ); ?>"
                             title="Click to copy"
                             style="display:inline-block;margin-top:4px;font-size:12px;background:#f3f3ee;border:1px solid #deded8;border-radius:4px;padding:3px 8px;cursor:pointer;font-family:monospace"><?php echo esc_html( $shortcode ); ?></code>
@@ -378,6 +373,14 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         <?php endif; ?>
                     </td>
                     <td style="font-size:12px;color:#555"><?php echo esc_html( $ads_label ); ?></td>
+                    <td>
+                        <?php if ( $car_gam_id && $engam_list_net ) : ?>
+                        <a href="https://admanager.google.com/<?php echo esc_attr( $engam_list_net ); ?>#delivery/line_item/detail/line_item_id=<?php echo rawurlencode( $car_gam_id ); ?>"
+                           target="_blank" rel="noopener" class="eg-btn sm" style="background:#d0ff00;color:#111;border-color:#d0ff00">View in GAM ↗</a>
+                        <?php else : ?>
+                        <span style="color:#bbb;font-size:12px">—</span>
+                        <?php endif; ?>
+                    </td>
                     <td>
                         <div class="eg-actions-cell">
                             <a href="<?php echo esc_url( add_query_arg( array( 'page' => 'engam-v2-carousels', 'edit' => $car['id'] ), admin_url( 'admin.php' ) ) ); ?>"
