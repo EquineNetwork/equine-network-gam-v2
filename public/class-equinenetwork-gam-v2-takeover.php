@@ -411,7 +411,10 @@ class Equinenetwork_Gam_V2_Takeover {
             if ( isWrapSlot && ! event.isEmpty && configuredLineId ) {
                 var servedId = String( event.lineItemId || '' );
                 if ( servedId && servedId !== '0' && servedId !== configuredLineId ) {
-                    var mismatchKey = configuredLineId + '_' + servedId;
+                    // Key by slot too — otherwise a single foreign line item winning
+                    // left + right + bg collapses into one warning row and the admin
+                    // only sees one slot, making a 3-rail conflict look like one.
+                    var mismatchKey = configuredLineId + '_' + servedId + '_' + elId;
                     if ( ! reportedMismatches[ mismatchKey ] ) {
                         reportedMismatches[ mismatchKey ] = true;
 
