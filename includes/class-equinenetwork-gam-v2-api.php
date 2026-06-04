@@ -291,11 +291,8 @@ class Equinenetwork_Gam_V2_API {
 			'reportDefinition' => array(
 				'reportType' => 'HISTORICAL',
 				'dateRange'  => array( 'relative' => self::REPORT_RANGE ),
-				'fields'     => array(
-					array( 'dimension' => 'LINE_ITEM_ID' ),
-					array( 'dimension' => 'LINE_ITEM_NAME' ),
-					array( 'metric'    => 'AD_SERVER_IMPRESSIONS' ),
-				),
+				'dimensions' => array( 'LINE_ITEM_ID', 'LINE_ITEM_NAME' ),
+				'metrics'    => array( 'AD_SERVER_IMPRESSIONS' ),
 				'filters'    => array(
 					array(
 						'fieldFilter' => array(
