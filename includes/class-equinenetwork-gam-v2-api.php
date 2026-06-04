@@ -207,9 +207,11 @@ class Equinenetwork_Gam_V2_API {
 	private function fetch_line_items( $token ) {
 		$network_code     = preg_replace( '/[^0-9]/', '', $this->network_code );
 		$base_url         = self::GAM_REST_BASE . '/networks/' . $network_code . '/lineItems';
-		$items            = array();
+		$all_items        = array(); // Every line item (unfiltered) — used as a safe fallback.
+		$filtered_items   = array(); // Only those targeting this site's ad unit(s).
 		$filter_keyword   = strtolower( get_option( 'equinenetwork_gam_v2_filter', '' ) );
 		$site_ad_unit_ids = $this->get_site_ad_unit_ids( $token );
+		$saw_targeting    = false; // True if the API returned ad-unit targeting on any line item.
 		$page_token       = null;
 
 		do {
@@ -239,20 +241,6 @@ class Equinenetwork_Gam_V2_API {
 
 		if ( ! empty( $body['lineItems'] ) ) {
 			foreach ( $body['lineItems'] as $li ) {
-				// Filter to line items targeting this site's ad unit(s).
-				if ( ! empty( $site_ad_unit_ids ) ) {
-					$targets_site = false;
-					if ( isset( $li['targeting']['inventoryTargeting']['targetedAdUnits'] ) ) {
-						foreach ( $li['targeting']['inventoryTargeting']['targetedAdUnits'] as $t ) {
-							if ( isset( $t['adUnitId'] ) && in_array( (string) $t['adUnitId'], $site_ad_unit_ids, true ) ) {
-								$targets_site = true;
-								break;
-							}
-						}
-					}
-					if ( ! $targets_site ) continue;
-				}
-
 				$id = isset( $li['externalId'] ) && $li['externalId'] !== ''
 					? $li['externalId']
 					: basename( $li['name'] );
@@ -268,7 +256,7 @@ class Equinenetwork_Gam_V2_API {
 
 				$gam_id = isset( $li['name'] ) ? basename( $li['name'] ) : '';
 
-				$items[] = array(
+				$item = array(
 					'id'            => $id,
 					'gam_id'        => $gam_id,
 					'name'          => $label,
@@ -277,10 +265,36 @@ class Equinenetwork_Gam_V2_API {
 					'start_time'    => isset( $li['startTime'] ) ? $li['startTime'] : '',
 					'end_time'      => isset( $li['endTime'] )   ? $li['endTime']   : '',
 				);
+
+				$all_items[] = $item;
+
+				// Determine whether this line item targets the site's ad unit(s).
+				if ( ! empty( $site_ad_unit_ids ) && ! empty( $li['targeting']['inventoryTargeting']['targetedAdUnits'] ) ) {
+					$saw_targeting = true;
+					foreach ( $li['targeting']['inventoryTargeting']['targetedAdUnits'] as $t ) {
+						// v1 REST uses the resource name "adUnit" (…/adUnits/ID); legacy uses numeric "adUnitId".
+						$tid = '';
+						if ( isset( $t['adUnit'] ) && $t['adUnit'] !== '' ) {
+							$tid = (string) basename( $t['adUnit'] );
+						} elseif ( isset( $t['adUnitId'] ) ) {
+							$tid = (string) $t['adUnitId'];
+						}
+						if ( $tid !== '' && in_array( $tid, $site_ad_unit_ids, true ) ) {
+							$filtered_items[] = $item;
+							break;
+						}
+					}
+				}
 			}
 		}
 
 		} while ( $page_token );
+
+		// Choose the result set:
+		// - If we resolved the site's ad units AND the API gave us targeting data, use the filtered list.
+		// - Otherwise (no ad units resolved, or the list endpoint omitted targeting) fall back to the
+		//   full list so the dashboard never shows 0 when real line items exist.
+		$items = ( ! empty( $site_ad_unit_ids ) && $saw_targeting ) ? $filtered_items : $all_items;
 
 		usort( $items, function( $a, $b ) {
 			return strcasecmp( $a['name'], $b['name'] );
@@ -352,7 +366,14 @@ class Equinenetwork_Gam_V2_API {
 					$targets = false;
 					if ( isset( $li['targeting']['inventoryTargeting']['targetedAdUnits'] ) ) {
 						foreach ( $li['targeting']['inventoryTargeting']['targetedAdUnits'] as $t ) {
-							if ( isset( $t['adUnitId'] ) && (string) $t['adUnitId'] === (string) $ad_unit_id ) {
+							// v1 REST uses the resource name "adUnit" (…/adUnits/ID); legacy uses numeric "adUnitId".
+							$tid = '';
+							if ( isset( $t['adUnit'] ) && $t['adUnit'] !== '' ) {
+								$tid = (string) basename( $t['adUnit'] );
+							} elseif ( isset( $t['adUnitId'] ) ) {
+								$tid = (string) $t['adUnitId'];
+							}
+							if ( $tid !== '' && $tid === (string) $ad_unit_id ) {
 								$targets = true;
 								break;
 							}
