@@ -262,7 +262,8 @@ class Equinenetwork_Gam_V2_API {
 	 * Runs a GAM report scoped to the site's ad unit(s) and returns the line items that delivered
 	 * to that inventory — the per-site list. This is the same data behind the GAM UI's "Line items
 	 * against this inventory" tab. Creates a temporary report, runs it (async), reads the rows, and
-	 * deletes the report afterward.
+	 * deletes the report afterward. Rows are filtered by computed status to keep only currently-live
+	 * line items (delivering / ready / paused) and drop completed, archived, inactive, etc.
 	 *
 	 * @param string     $token OAuth2 access token.
 	 * @param array|null $log   Optional — receives human-readable diagnostic lines (used by diagnose()).
@@ -291,7 +292,7 @@ class Equinenetwork_Gam_V2_API {
 			'reportDefinition' => array(
 				'reportType' => 'HISTORICAL',
 				'dateRange'  => array( 'relative' => self::REPORT_RANGE ),
-				'dimensions' => array( 'LINE_ITEM_ID', 'LINE_ITEM_NAME' ),
+				'dimensions' => array( 'LINE_ITEM_ID', 'LINE_ITEM_NAME', 'LINE_ITEM_COMPUTED_STATUS_NAME' ),
 				'metrics'    => array( 'AD_SERVER_IMPRESSIONS' ),
 				'filters'    => array(
 					array(
@@ -362,8 +363,10 @@ class Equinenetwork_Gam_V2_API {
 		if ( $log !== null ) $log[] = 'Report result: ' . $result_name;
 
 		// 4) Fetch the result rows (paginated).
-		$items      = array();
-		$page_token = null;
+		$items        = array();
+		$total_rows   = 0;
+		$status_tally = array();
+		$page_token   = null;
 		do {
 			$url = self::GAM_REST_BASE . '/' . $result_name . ':fetchRows?pageSize=1000';
 			if ( $page_token ) {
@@ -380,14 +383,24 @@ class Equinenetwork_Gam_V2_API {
 					$dv      = isset( $row['dimensionValues'] ) ? $row['dimensionValues'] : array();
 					$li_id   = isset( $dv[0] ) ? $this->report_value_string( $dv[0] ) : '';
 					$li_name = isset( $dv[1] ) ? $this->report_value_string( $dv[1] ) : '';
+					$status  = isset( $dv[2] ) ? $this->report_value_string( $dv[2] ) : '';
 					if ( $li_id === '' && $li_name === '' ) {
+						continue;
+					}
+					$total_rows++;
+					$tally_key                  = $status !== '' ? $status : '(none)';
+					$status_tally[ $tally_key ] = ( isset( $status_tally[ $tally_key ] ) ? $status_tally[ $tally_key ] : 0 ) + 1;
+
+					// Keep only line items that are currently live: delivering, ready, or paused.
+					// Drops completed, archived, inactive, pending approval, draft, canceled, disapproved.
+					if ( ! $this->is_active_status( $status ) ) {
 						continue;
 					}
 					$items[] = array(
 						'id'            => $li_id,
 						'gam_id'        => $li_id,
 						'name'          => $li_name !== '' ? $li_name : $li_id,
-						'status'        => '',
+						'status'        => $status,
 						'resource_name' => $li_id !== '' ? ( 'networks/' . $network_code . '/lineItems/' . $li_id ) : '',
 						'start_time'    => '',
 						'end_time'      => '',
@@ -397,7 +410,17 @@ class Equinenetwork_Gam_V2_API {
 			$page_token = isset( $fbody['nextPageToken'] ) ? $fbody['nextPageToken'] : null;
 		} while ( $page_token );
 
-		if ( $log !== null ) $log[] = 'Line items returned by report: ' . count( $items );
+		if ( $log !== null ) {
+			$log[] = 'Line items on this ad unit (last 90 days): ' . $total_rows . ' total.';
+			if ( $status_tally ) {
+				$parts = array();
+				foreach ( $status_tally as $st => $n ) {
+					$parts[] = $st . ' × ' . $n;
+				}
+				$log[] = '   Status breakdown: ' . implode( ', ', $parts );
+			}
+			$log[] = 'Kept after status filter (delivering / ready / paused): ' . count( $items );
+		}
 
 		// 5) Best-effort cleanup so we don't clutter the GAM Reports UI.
 		$this->delete_report( $token, $report_name );
@@ -416,6 +439,26 @@ class Equinenetwork_Gam_V2_API {
 		if ( isset( $val['intValue'] ) )    return (string) $val['intValue'];
 		if ( isset( $val['doubleValue'] ) ) return (string) $val['doubleValue'];
 		return '';
+	}
+
+	/**
+	 * Decides whether a line item's computed status counts as "live" for this site's dashboard.
+	 * Includes delivering, delivery-extended, ready, and paused (incl. paused/inventory-released).
+	 * Excludes completed, archived, inactive, pending approval, draft, canceled, disapproved.
+	 * Matches on the status name case-insensitively so it survives enum spelling / locale variations.
+	 * An empty status is kept rather than hidden, so a missing field never produces a false zero.
+	 */
+	private function is_active_status( $status ) {
+		$s = strtolower( trim( (string) $status ) );
+		if ( $s === '' ) {
+			return true;
+		}
+		foreach ( array( 'deliver', 'ready', 'paus' ) as $needle ) {
+			if ( strpos( $s, $needle ) !== false ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -874,9 +917,10 @@ class Equinenetwork_Gam_V2_API {
 			return array( 'success' => false, 'message' => implode( "\n", $log ) );
 		}
 
-		$log[] = 'RESULT: ' . count( $items ) . ' line items for this site (in ' . $elapsed . 's).';
-		foreach ( array_slice( $items, 0, 12 ) as $it ) {
-			$log[] = '   • ' . $it['name'] . ' (' . $it['gam_id'] . ')';
+		$log[] = 'RESULT: ' . count( $items ) . ' active line items for this site (in ' . $elapsed . 's).';
+		foreach ( array_slice( $items, 0, 20 ) as $it ) {
+			$status = $it['status'] !== '' ? ' [' . $it['status'] . ']' : '';
+			$log[] = '   • ' . $it['name'] . ' (' . $it['gam_id'] . ')' . $status;
 		}
 		return array( 'success' => true, 'message' => implode( "\n", $log ) );
 	}
