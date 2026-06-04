@@ -15,7 +15,7 @@ class Equinenetwork_Gam_V2_Leaderboard {
 	}
 
 	private static function slot_html( $lb, $debug = false ) {
-		$pos      = isset( $lb['position'] ) && $lb['position'] === 'footer' ? 'footer' : 'header';
+		$pos      = in_array( ( $lb['position'] ?? '' ), array( 'footer', 'midpoint' ), true ) ? $lb['position'] : 'header';
 		$slotname = ! empty( $lb['slotname'] ) ? $lb['slotname'] : 'leaderboard';
 
 		$dw = ! empty( $lb['dw'] ) ? (int) $lb['dw'] : 728;
@@ -63,12 +63,43 @@ class Equinenetwork_Gam_V2_Leaderboard {
 				. '</div>';
 		}
 
+		// Mid-content slots carry the optional CSS selector that tells the front-end JS
+		// where, inside the page, to drop the band (before the middle matching element).
+		$selector_attr = '';
+		if ( $pos === 'midpoint' && ! empty( $lb['target_selector'] ) ) {
+			$selector_attr = ' data-engam-selector="' . esc_attr( $lb['target_selector'] ) . '"';
+		}
+
 		return '<div class="engam-leaderboard engam-leaderboard-' . esc_attr( $pos ) . '" '
 			. 'style="' . $band_style . $debug_style . '" '
-			. 'data-engam-leaderboard="' . esc_attr( $pos ) . '">'
+			. 'data-engam-leaderboard="' . esc_attr( $pos ) . '"' . $selector_attr . '>'
 			. $debug_bar
 			. '<div' . $attr_str . '></div>'
 			. '</div>';
+	}
+
+	/**
+	 * True when the current front-end view matches one of the comma-separated page
+	 * targets (numeric IDs or post slugs). Used to scope mid-content leaderboards
+	 * to specific pages. An empty target list never matches.
+	 */
+	private static function page_matches( $targets_raw ) {
+		$targets_raw = trim( (string) $targets_raw );
+		if ( $targets_raw === '' ) return false;
+
+		$obj_id = (int) get_queried_object_id();
+		if ( $obj_id <= 0 ) return false;
+		$post = get_post( $obj_id );
+		$slug = $post ? strtolower( $post->post_name ) : '';
+
+		foreach ( array_filter( array_map( 'trim', explode( ',', $targets_raw ) ) ) as $t ) {
+			if ( is_numeric( $t ) ) {
+				if ( (int) $t === $obj_id ) return true;
+			} elseif ( $slug !== '' && strcasecmp( $t, $slug ) === 0 ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	public function render_leaderboards() {
@@ -83,7 +114,17 @@ class Equinenetwork_Gam_V2_Leaderboard {
 
 		foreach ( $leaderboards as $lb ) {
 			if ( ! self::is_active( $lb ) ) continue;
-			$pos = isset( $lb['position'] ) && $lb['position'] === 'footer' ? 'footer' : 'header';
+			$pos = in_array( ( $lb['position'] ?? '' ), array( 'footer', 'midpoint' ), true ) ? $lb['position'] : 'header';
+
+			// Mid-content leaderboards only appear on their targeted page(s);
+			// multiple may exist (one per page), so they are not de-duplicated.
+			if ( $pos === 'midpoint' ) {
+				if ( ! self::page_matches( $lb['target_pages'] ?? '' ) ) continue;
+				echo self::slot_html( $lb, $debug ); // phpcs:ignore
+				$has_output = true;
+				continue;
+			}
+
 			if ( $pos === 'header' && $rendered_header ) continue;
 			if ( $pos === 'footer' && $rendered_footer ) continue;
 
@@ -96,11 +137,49 @@ class Equinenetwork_Gam_V2_Leaderboard {
 		if ( ! $has_output ) return;
 
 		?>
+<style>
+/* An unfilled mid-content leaderboard collapses its whole band so the page
+   (e.g. a calendar) doesn't show an empty gap where the ad would have gone. */
+.engam-leaderboard-midpoint.engam-empty,
+.engam-leaderboard-midpoint:has(.equinenetworkad.engam-empty){display:none!important;height:0!important;padding:0!important;margin:0!important}
+</style>
 <script>
 (function(){
+	function midpointInto(container,node){
+		var kids=container.children;
+		if(!kids||!kids.length){container.appendChild(node);return;}
+		var rect=container.getBoundingClientRect();
+		var midY=rect.top+rect.height/2;
+		for(var j=0;j<kids.length;j++){
+			if(kids[j]===node||node.contains(kids[j]))continue;
+			var kr=kids[j].getBoundingClientRect();
+			if(kr.top+kr.height/2>=midY){container.insertBefore(node,kids[j]);return;}
+		}
+		container.appendChild(node);
+	}
+	function placeMidpoint(s){
+		var sel=(s.getAttribute('data-engam-selector')||'').trim();
+		if(sel){
+			try{
+				var matches=document.querySelectorAll(sel),list=[];
+				for(var i=0;i<matches.length;i++){if(!s.contains(matches[i]))list.push(matches[i]);}
+				if(list.length>1){
+					var mid=list[Math.floor(list.length/2)];
+					if(mid&&mid.parentNode){mid.parentNode.insertBefore(s,mid);return;}
+				}else if(list.length===1){midpointInto(list[0],s);return;}
+			}catch(e){}
+		}
+		// No (or unmatched) selector: drop at the visual midpoint of the main content.
+		var defs=['.entry-content','main article','main .e-con-inner','main .elementor-section-wrap','main','article','#primary','#content','.site-content'];
+		for(var d=0;d<defs.length;d++){
+			var el=document.querySelector(defs[d]);
+			if(el&&el.children.length){midpointInto(el,s);return;}
+		}
+	}
 	function move(){
 		var hSlots=document.querySelectorAll('[data-engam-leaderboard="header"]');
 		var fSlots=document.querySelectorAll('[data-engam-leaderboard="footer"]');
+		var mSlots=document.querySelectorAll('[data-engam-leaderboard="midpoint"]');
 		if(hSlots.length){
 			var header=document.querySelector('header.site-header,header#masthead,header#site-header,.site-header,header');
 			if(header&&header.parentNode){
@@ -112,6 +191,9 @@ class Equinenetwork_Gam_V2_Leaderboard {
 			if(footer){
 				fSlots.forEach(function(s){footer.insertBefore(s,footer.firstChild);});
 			}
+		}
+		if(mSlots.length){
+			mSlots.forEach(function(s){placeMidpoint(s);});
 		}
 	}
 	if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',move);}else{move();}

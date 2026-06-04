@@ -20,8 +20,10 @@ if ( isset( $_POST['engam_v2_lb_nonce'] ) && wp_verify_nonce( sanitize_text_fiel
         $record = array(
             'id'       => $lb_id,
             'name'     => sanitize_text_field( wp_unslash( $_POST['engam_lb_name'] ?? '' ) ),
-            'position' => in_array( $_POST['engam_lb_position'] ?? '', array( 'header', 'footer' ), true )
+            'position' => in_array( $_POST['engam_lb_position'] ?? '', array( 'header', 'footer', 'midpoint' ), true )
                               ? sanitize_text_field( wp_unslash( $_POST['engam_lb_position'] ) ) : 'header',
+            'target_pages'    => sanitize_text_field( wp_unslash( $_POST['engam_lb_target_pages'] ?? '' ) ),
+            'target_selector' => sanitize_text_field( wp_unslash( $_POST['engam_lb_target_selector'] ?? '' ) ),
             'slotname' => 'leaderboard',
             'bg_color' => sanitize_hex_color( wp_unslash( $_POST['engam_lb_bg_color'] ?? '' ) ) ?: '',
             'padding_top'    => max( 0, intval( $_POST['engam_lb_padding_top']    ?? 0 ) ),
@@ -123,7 +125,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
     <div class="eg-head">
         <div>
             <h2>Leaderboard List</h2>
-            <p>Auto-injected on every page — below the site header or at the top of the footer. No Elementor container needed.</p>
+            <p>Auto-injected with no Elementor container needed — below the site header, at the top of the footer, or halfway down a specific page.</p>
         </div>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-leaderboards&edit_lb=new' ) ); ?>" class="eg-btn">+ Add New Leaderboard</a>
     </div>
@@ -146,7 +148,17 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
             <tbody>
                 <?php foreach ( $leaderboards as $lb ) :
                     $is_active = ! empty( $lb['active'] );
-                    $pos_label = isset( $lb['position'] ) && $lb['position'] === 'footer' ? 'Footer' : 'Header';
+                    $pos_val   = $lb['position'] ?? 'header';
+                    if ( $pos_val === 'footer' ) {
+                        $pos_label = 'Footer';
+                    } elseif ( $pos_val === 'midpoint' ) {
+                        $pos_label = 'Mid-content';
+                        if ( ! empty( $lb['target_pages'] ) ) {
+                            $pos_label .= ' (' . esc_html( $lb['target_pages'] ) . ')';
+                        }
+                    } else {
+                        $pos_label = 'Header';
+                    }
                 ?>
                 <tr>
                     <td>
@@ -186,6 +198,7 @@ if ( $edit_id ) :
     $is_new = ( $edit_id === 'new' || $editing === null );
     $f = $is_new ? array(
         'id' => '', 'name' => '', 'position' => 'header', 'slotname' => 'leaderboard',
+        'target_pages' => '', 'target_selector' => '',
         'bg_color' => '',
         'padding_top' => 0, 'padding_right' => 0, 'padding_bottom' => 0, 'padding_left' => 0,
         'active' => false,
@@ -195,7 +208,7 @@ if ( $edit_id ) :
     <div class="eg-head">
         <div>
             <h2><?php echo $is_new ? 'New Leaderboard' : 'Edit Leaderboard'; ?></h2>
-            <p>Inject a leaderboard slot into the header or footer on every page.</p>
+            <p>Inject a leaderboard slot into the header or footer site-wide, or halfway down a specific page.</p>
         </div>
     </div>
     <form method="post" action="">
@@ -217,11 +230,40 @@ if ( $edit_id ) :
                     <select class="eg-input" name="engam_lb_position" id="engam-lb-position">
                         <option value="header" <?php selected( $f['position'] ?? 'header', 'header' ); ?>>Header — below the site nav</option>
                         <option value="footer" <?php selected( $f['position'] ?? 'header', 'footer' ); ?>>Footer — top of the site footer</option>
+                        <option value="midpoint" <?php selected( $f['position'] ?? 'header', 'midpoint' ); ?>>Mid-content — halfway down a specific page</option>
                     </select>
-                    <p class="eg-hint">Shows on every page in this position. No page selection needed.</p>
+                    <p class="eg-hint">Header/Footer show on every page. Mid-content shows only on the page(s) you choose below.</p>
+                </div>
+            </div>
+
+            <!-- MID-CONTENT TARGETING (only relevant for the Mid-content position) -->
+            <div id="engam-lb-midpoint-fields" style="margin-top:18px;<?php echo ( ( $f['position'] ?? 'header' ) === 'midpoint' ) ? '' : 'display:none'; ?>">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+                    <div class="eg-settings-field">
+                        <label for="engam-lb-target-pages">Target Page(s)</label>
+                        <input class="eg-input" type="text" name="engam_lb_target_pages" id="engam-lb-target-pages"
+                            value="<?php echo esc_attr( $f['target_pages'] ?? '' ); ?>" placeholder="e.g. 42, events-calendar">
+                        <p class="eg-hint">Page IDs or slugs, comma-separated. The leaderboard renders only on these pages.</p>
+                    </div>
+                    <div class="eg-settings-field">
+                        <label for="engam-lb-target-selector">Insert Before <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0">(CSS selector, optional)</span></label>
+                        <input class="eg-input" type="text" name="engam_lb_target_selector" id="engam-lb-target-selector"
+                            value="<?php echo esc_attr( $f['target_selector'] ?? '' ); ?>" placeholder="e.g. .tribe-events-calendar-list__event">
+                        <p class="eg-hint">If the page repeats rows (calendar events, list items), enter their CSS class — the ad lands just before the middle row. Leave blank to drop it at the visual midpoint of the page content.</p>
+                    </div>
                 </div>
             </div>
         </div>
+<script>
+(function(){
+    var sel = document.getElementById('engam-lb-position');
+    var box = document.getElementById('engam-lb-midpoint-fields');
+    if(!sel||!box) return;
+    function sync(){ box.style.display = (sel.value === 'midpoint') ? '' : 'none'; }
+    sel.addEventListener('change', sync);
+    sync();
+})();
+</script>
 
         <!-- APPEARANCE -->
         <div class="eg-form-section">
