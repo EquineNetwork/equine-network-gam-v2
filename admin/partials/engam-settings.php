@@ -155,7 +155,6 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     </div>
                 </div>
                 <p class="eg-hint">The key is stored securely in the WordPress database — never in a file or repository.</p>
-                <p class="eg-hint">Or skip uploads entirely: add <code>define( 'ENGAM_GAM_CREDENTIALS_JSON', '...' );</code> to <code>wp-config.php</code> on each server.</p>
             </div>
 
             <div style="display:flex;gap:10px;flex-wrap:wrap">
