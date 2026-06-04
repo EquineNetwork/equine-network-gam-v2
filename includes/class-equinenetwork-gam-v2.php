@@ -14,6 +14,7 @@ class Equinenetwork_Gam_V2 {
 		$this->define_admin_hooks();
 		$this->define_public_hooks();
 		$this->define_elementor_hooks();
+		$this->define_cron_hooks();
 	}
 
 	private function load_dependencies() {
@@ -61,6 +62,34 @@ require_once EQUINENETWORK_GAM_V2_PATH . 'admin/class-equinenetwork-gam-v2-admin
 		add_action( 'engam_warm_slot_sizes', function( $slot ) {
 			require_once EQUINENETWORK_GAM_V2_PATH . 'includes/class-equinenetwork-gam-v2-api.php';
 			( new Equinenetwork_Gam_V2_API() )->get_slot_sizes( $slot );
+		} );
+	}
+
+	private function define_cron_hooks() {
+		// Register a 45-minute interval so the cache is refreshed before the 1-hour transient expires.
+		add_filter( 'cron_schedules', function( $schedules ) {
+			if ( ! isset( $schedules['engam_45min'] ) ) {
+				$schedules['engam_45min'] = array(
+					'interval' => 45 * MINUTE_IN_SECONDS,
+					'display'  => 'Every 45 Minutes (EN GAM)',
+				);
+			}
+			return $schedules;
+		} );
+
+		// Handler: force-refresh line items in the background.
+		add_action( 'engam_v2_refresh_line_items', function() {
+			$api = new Equinenetwork_Gam_V2_API();
+			if ( $api->is_configured() ) {
+				$api->get_line_items( true );
+			}
+		} );
+
+		// Self-healing: schedule the event if it somehow got dropped (e.g., after plugin update).
+		add_action( 'init', function() {
+			if ( ! wp_next_scheduled( 'engam_v2_refresh_line_items' ) ) {
+				wp_schedule_event( time() + 45 * MINUTE_IN_SECONDS, 'engam_45min', 'engam_v2_refresh_line_items' );
+			}
 		} );
 	}
 

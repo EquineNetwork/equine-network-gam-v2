@@ -7,10 +7,11 @@ if ( ! defined( 'WPINC' ) ) die;
  */
 class Equinenetwork_Gam_V2_API {
 
-	const CACHE_KEY      = 'engam_v2_line_items';
-	const CACHE_DURATION = 3600; // 1 hour
-	const TOKEN_CACHE    = 'engam_v2_access_token';
-	const GAM_REST_BASE  = 'https://admanager.googleapis.com/v1';
+	const CACHE_KEY        = 'engam_v2_line_items';
+	const CACHE_DURATION   = 3600; // 1 hour
+	const TOKEN_CACHE      = 'engam_v2_access_token';
+	const GAM_REST_BASE    = 'https://admanager.googleapis.com/v1';
+	const CACHE_SITE_UNITS = 'engam_v2_site_unit_ids';
 
 	private $credentials;
 	private $network_code;
@@ -138,15 +139,78 @@ class Equinenetwork_Gam_V2_API {
 	}
 
 	/**
+	 * Resolves the site's root ad unit ID (and one level of children) from the GAM network path.
+	 * The network code "/22345131513/nationalteamroping" implies the root ad unit code is "nationalteamroping".
+	 * Results are cached for 1 hour alongside line items.
+	 */
+	private function get_site_ad_unit_ids( $token ) {
+		$cached = get_transient( self::CACHE_SITE_UNITS );
+		if ( is_array( $cached ) ) return $cached;
+
+		// Extract site code — last non-empty segment of the network path.
+		$segments  = array_values( array_filter( explode( '/', $this->network_code ) ) );
+		$site_code = end( $segments );
+		// Need at least two segments: numeric publisher ID + site code.
+		if ( ! $site_code || count( $segments ) < 2 ) return array();
+
+		$network_code = preg_replace( '/[^0-9]/', '', $this->network_code );
+		$all_units    = array();
+		$page_token   = null;
+
+		do {
+			$params = array( 'pageSize' => 500 );
+			if ( $page_token ) $params['pageToken'] = $page_token;
+			$resp = wp_remote_get(
+				add_query_arg( $params, self::GAM_REST_BASE . '/networks/' . $network_code . '/adUnits' ),
+				array( 'timeout' => 30, 'headers' => array( 'Authorization' => 'Bearer ' . $token ) )
+			);
+			if ( is_wp_error( $resp ) || wp_remote_retrieve_response_code( $resp ) !== 200 ) break;
+			$body = json_decode( wp_remote_retrieve_body( $resp ), true );
+			if ( ! empty( $body['adUnits'] ) ) $all_units = array_merge( $all_units, $body['adUnits'] );
+			$page_token = $body['nextPageToken'] ?? null;
+		} while ( $page_token );
+
+		// Find root ad unit by code.
+		$root_resource = null;
+		$ids           = array();
+		foreach ( $all_units as $au ) {
+			if ( isset( $au['adUnitCode'] ) && strcasecmp( $au['adUnitCode'], $site_code ) === 0 ) {
+				$root_resource = $au['name'] ?? null;
+				$id_parts      = explode( '/', $root_resource ?? '' );
+				$root_id       = end( $id_parts );
+				if ( $root_id ) $ids[] = (string) $root_id;
+				break;
+			}
+		}
+
+		// Also collect direct children (one level deep via parentAdUnit field).
+		if ( $root_resource ) {
+			foreach ( $all_units as $au ) {
+				$parent = $au['parentAdUnit'] ?? '';
+				if ( $parent === $root_resource ) {
+					$id_parts = explode( '/', $au['name'] ?? '' );
+					$child_id = end( $id_parts );
+					if ( $child_id ) $ids[] = (string) $child_id;
+				}
+			}
+		}
+
+		set_transient( self::CACHE_SITE_UNITS, $ids, self::CACHE_DURATION );
+		return $ids;
+	}
+
+	/**
 	 * Fetches line items from the GAM REST API (admanager.googleapis.com/v1).
+	 * Filters to only line items targeting this site's ad unit (derived from the network code).
 	 * Paginates through all results automatically.
 	 */
 	private function fetch_line_items( $token ) {
-		$network_code   = preg_replace( '/[^0-9]/', '', $this->network_code );
-		$base_url       = self::GAM_REST_BASE . '/networks/' . $network_code . '/lineItems';
-		$items          = array();
-		$filter_keyword = strtolower( get_option( 'equinenetwork_gam_v2_filter', '' ) );
-		$page_token     = null;
+		$network_code     = preg_replace( '/[^0-9]/', '', $this->network_code );
+		$base_url         = self::GAM_REST_BASE . '/networks/' . $network_code . '/lineItems';
+		$items            = array();
+		$filter_keyword   = strtolower( get_option( 'equinenetwork_gam_v2_filter', '' ) );
+		$site_ad_unit_ids = $this->get_site_ad_unit_ids( $token );
+		$page_token       = null;
 
 		do {
 			$params = array( 'pageSize' => 1000 );
@@ -175,6 +239,20 @@ class Equinenetwork_Gam_V2_API {
 
 		if ( ! empty( $body['lineItems'] ) ) {
 			foreach ( $body['lineItems'] as $li ) {
+				// Filter to line items targeting this site's ad unit(s).
+				if ( ! empty( $site_ad_unit_ids ) ) {
+					$targets_site = false;
+					if ( isset( $li['targeting']['inventoryTargeting']['targetedAdUnits'] ) ) {
+						foreach ( $li['targeting']['inventoryTargeting']['targetedAdUnits'] as $t ) {
+							if ( isset( $t['adUnitId'] ) && in_array( (string) $t['adUnitId'], $site_ad_unit_ids, true ) ) {
+								$targets_site = true;
+								break;
+							}
+						}
+					}
+					if ( ! $targets_site ) continue;
+				}
+
 				$id = isset( $li['externalId'] ) && $li['externalId'] !== ''
 					? $li['externalId']
 					: basename( $li['name'] );
@@ -496,6 +574,7 @@ class Equinenetwork_Gam_V2_API {
 	public function clear_cache() {
 		delete_transient( self::CACHE_KEY );
 		delete_transient( self::TOKEN_CACHE );
+		delete_transient( self::CACHE_SITE_UNITS );
 		global $wpdb;
 		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_engam_v2_sizes_%' OR option_name LIKE '_transient_timeout_engam_v2_sizes_%'" );
 		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_engam_v2_wrap_cr_%' OR option_name LIKE '_transient_timeout_engam_v2_wrap_cr_%'" );
