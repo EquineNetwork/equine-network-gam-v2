@@ -14,6 +14,7 @@ class Equinenetwork_Gam_V2_Admin {
 		add_action( 'wp_ajax_engam_v2_get_line_items',   array( $this, 'ajax_get_line_items' ) );
 		add_action( 'wp_ajax_engam_v2_test_sheets',      array( $this, 'ajax_test_sheets' ) );
 		add_action( 'wp_ajax_engam_v2_test_ms',          array( $this, 'ajax_test_ms' ) );
+		add_action( 'wp_ajax_engam_v2_ms_tabs',          array( $this, 'ajax_ms_tabs' ) );
 		add_action( 'wp_ajax_engam_v2_sheets_tabs',      array( $this, 'ajax_sheets_tabs' ) );
 		add_action( 'wp_ajax_engam_v2_sheets_preview',   array( $this, 'ajax_sheets_preview' ) );
 		add_action( 'wp_ajax_engam_v2_sheets_save',      array( $this, 'ajax_sheets_save' ) );
@@ -331,6 +332,29 @@ class Equinenetwork_Gam_V2_Admin {
 		}
 
 		wp_send_json_error( 'Paste your SharePoint share link (and tab name) above, then click Save before testing.' );
+	}
+
+	/**
+	 * Returns the worksheet/tab names for the configured OneDrive/SharePoint file,
+	 * used to populate the searchable tab picker on the settings page.
+	 */
+	public function ajax_ms_tabs() {
+		check_ajax_referer( 'engam_v2_admin', 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) wp_die( -1 );
+
+		require_once EQUINENETWORK_GAM_V2_PATH . 'includes/class-equinenetwork-gam-v2-api.php';
+		$api   = new Equinenetwork_Gam_V2_API();
+		$force = ! empty( $_POST['force'] );
+		$tabs  = $api->list_worksheet_names( $force );
+
+		if ( is_wp_error( $tabs ) ) {
+			wp_send_json_error( $tabs->get_error_message() );
+		}
+
+		wp_send_json_success( array(
+			'tabs'    => array_values( (array) $tabs ),
+			'current' => get_option( 'engam_v2_ms_sheet_name', 'HR' ),
+		) );
 	}
 
 	public function ajax_sheets_tabs() {

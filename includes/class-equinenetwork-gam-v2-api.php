@@ -1079,6 +1079,22 @@ class Equinenetwork_Gam_V2_API {
 	}
 
 	/**
+	 * Unified worksheet/tab name list for the configured file — uses Microsoft
+	 * Graph when an Azure app is set up, otherwise the "Anyone with the link"
+	 * download. Used to populate the tab picker on the settings page.
+	 * Returns an array of tab names (in order) or a WP_Error.
+	 */
+	public function list_worksheet_names( $force_refresh = false ) {
+		if ( $this->is_ms_configured() ) {
+			return $this->get_ms_worksheet_names( $force_refresh );
+		}
+		if ( get_option( 'engam_v2_ms_file_url', '' ) ) {
+			return $this->get_ms_link_worksheet_names( $force_refresh );
+		}
+		return array();
+	}
+
+	/**
 	 * Reads active sponsors from the configured OneDrive/SharePoint Excel file.
 	 * Auto-detects the header row by looking for a row containing "Advertiser".
 	 */
@@ -1375,6 +1391,26 @@ class Equinenetwork_Gam_V2_API {
 		$options = $this->extract_sponsors_from_rows( $rows );
 		set_transient( $cache_key, $options, self::CACHE_DURATION );
 		return $options;
+	}
+
+	/**
+	 * Tab names from the "Anyone with the link" file (no Azure). Downloads the
+	 * workbook once and reads only its sheet names. Cached 12h in CACHE_MS_SHEETS.
+	 */
+	private function get_ms_link_worksheet_names( $force_refresh = false ) {
+		if ( ! $force_refresh ) {
+			$cached = get_transient( self::CACHE_MS_SHEETS );
+			if ( $cached !== false ) return $cached;
+		}
+
+		$binary = $this->ms_link_download( get_option( 'engam_v2_ms_file_url', '' ) );
+		if ( is_wp_error( $binary ) ) return $binary;
+
+		$names = $this->xlsx_sheet_names( $binary );
+		if ( is_wp_error( $names ) ) return $names;
+
+		set_transient( self::CACHE_MS_SHEETS, $names, 12 * HOUR_IN_SECONDS );
+		return $names;
 	}
 
 	/**
