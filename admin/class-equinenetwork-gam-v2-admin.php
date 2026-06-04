@@ -13,6 +13,7 @@ class Equinenetwork_Gam_V2_Admin {
 		add_action( 'wp_ajax_engam_v2_save_credentials', array( $this, 'ajax_save_credentials' ) );
 		add_action( 'wp_ajax_engam_v2_get_line_items',   array( $this, 'ajax_get_line_items' ) );
 		add_action( 'wp_ajax_engam_v2_test_sheets',      array( $this, 'ajax_test_sheets' ) );
+		add_action( 'wp_ajax_engam_v2_test_ms',          array( $this, 'ajax_test_ms' ) );
 		add_action( 'wp_ajax_engam_v2_sheets_tabs',      array( $this, 'ajax_sheets_tabs' ) );
 		add_action( 'wp_ajax_engam_v2_sheets_preview',   array( $this, 'ajax_sheets_preview' ) );
 		add_action( 'wp_ajax_engam_v2_sheets_save',      array( $this, 'ajax_sheets_save' ) );
@@ -290,6 +291,39 @@ class Equinenetwork_Gam_V2_Admin {
 		}
 
 		wp_send_json_success( 'Connected! Found ' . count( $options ) . ' active sponsors. Cache refreshed.' );
+	}
+
+	public function ajax_test_ms() {
+		check_ajax_referer( 'engam_v2_admin', 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) wp_die( -1 );
+
+		require_once EQUINENETWORK_GAM_V2_PATH . 'includes/class-equinenetwork-gam-v2-api.php';
+		$api = new Equinenetwork_Gam_V2_API();
+
+		if ( ! $api->is_ms_configured() ) {
+			wp_send_json_error( 'Microsoft credentials are not saved yet. Fill in all four fields and click Save first.' );
+		}
+
+		$token = $api->get_graph_token();
+		if ( is_wp_error( $token ) ) {
+			wp_send_json_error( 'Could not get Microsoft token: ' . $token->get_error_message() );
+		}
+
+		// Refresh worksheets list so any sheet-name issues surface immediately.
+		$sheets = $api->get_ms_worksheet_names( true );
+		if ( is_wp_error( $sheets ) ) {
+			wp_send_json_error( 'Connected to Microsoft, but could not read the file: ' . $sheets->get_error_message() );
+		}
+
+		// Load sponsor data.
+		$options = $api->get_ms_sponsor_options( true );
+		$sheet   = get_option( 'engam_v2_ms_sheet_name', 'HR' );
+		$tabs    = implode( ', ', $sheets );
+
+		wp_send_json_success(
+			'Connected! Found ' . count( $options ) . ' active sponsors in the "' . esc_html( $sheet ) . '" tab. '
+			. 'Available tabs: ' . esc_html( $tabs ) . '.'
+		);
 	}
 
 	public function ajax_sheets_tabs() {
