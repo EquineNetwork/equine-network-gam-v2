@@ -242,6 +242,7 @@ actually returning.
 | 3.3.51 | Sponsor sheet: no‑Azure "Anyone with the link" path (download + XLSX parse) |
 | 3.3.52 | Sponsor dropdowns show "Name - Sponsorship ID" (e.g. `Bimeda - videotips_hr_bimeda`) so duplicate advertiser names are distinguishable |
 | 3.3.53 | Worksheet/Tab Name is a searchable combobox (`<datalist>`) populated from the file's real tabs; new `engam_v2_ms_tabs` AJAX + `list_worksheet_names()` |
+| 3.3.54 | Tab picker: `<datalist>` → real `<select>` (datalist only showed options matching the current value, so the dropdown looked empty); hidden input carries the value |
 
 ---
 
