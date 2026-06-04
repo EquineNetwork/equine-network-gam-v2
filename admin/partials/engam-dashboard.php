@@ -226,19 +226,23 @@ $metric_cards = array(
     <?php foreach ( $metric_cards as $mc ) :
         $count    = (int) $mc['count'];
         $tag_attr = $count > 0 ? '' : ' style="background:#eee;color:#999"';
+        $has_link = ! empty( $mc['link'] );
         ob_start();
         ?>
-        <div class="eg-card">
-            <div class="eg-head">
+        <div class="eg-card eg-metric">
+            <div class="eg-metric-top">
                 <h2><?php echo esc_html( $mc['label'] ); ?></h2>
                 <span class="eg-tag"<?php echo $tag_attr; // phpcs:ignore ?>><?php echo $count; ?> Active</span>
             </div>
+            <?php if ( $has_link ) : ?>
+            <div class="eg-metric-foot"><span class="eg-btn sm">Manage &rarr;</span></div>
+            <?php endif; ?>
         </div>
         <?php
         $card = ob_get_clean();
-        if ( $mc['link'] ) :
+        if ( $has_link ) :
         ?>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=' . $mc['link'] ) ); ?>" style="text-decoration:none;color:inherit"><?php echo $card; // phpcs:ignore ?></a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=' . $mc['link'] ) ); ?>" style="text-decoration:none;color:inherit;display:block"><?php echo $card; // phpcs:ignore ?></a>
         <?php else : ?>
         <?php echo $card; // phpcs:ignore ?>
         <?php endif; ?>

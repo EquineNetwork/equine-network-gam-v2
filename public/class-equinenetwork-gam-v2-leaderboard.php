@@ -145,36 +145,73 @@ class Equinenetwork_Gam_V2_Leaderboard {
 </style>
 <script>
 (function(){
-	function midpointInto(container,node){
-		var kids=container.children;
-		if(!kids||!kids.length){container.appendChild(node);return;}
+	function spanFull(node){
+		// Make the band span the full width of whatever container it lands in — even an
+		// Elementor flex/grid — otherwise it shrinks to a narrow column pinned to one side.
+		node.style.width='100%';
+		node.style.maxWidth='100%';
+		node.style.alignSelf='stretch';
+		node.style.gridColumn='1 / -1';
+		node.style.boxSizing='border-box';
+	}
+	function elChildren(el){
+		return Array.prototype.filter.call(el.children,function(k){return k.nodeType===1;});
+	}
+	function isVerticalStack(el){
+		var cs=getComputedStyle(el);
+		if(cs.display==='grid'||cs.display==='inline-grid')return false;
+		if(cs.display==='flex'||cs.display==='inline-flex')return cs.flexDirection.indexOf('column')===0;
+		return true; // normal block flow stacks vertically
+	}
+	function insertNearMid(container,node){
+		var kids=elChildren(container).filter(function(k){return k!==node&&!node.contains(k);});
+		if(!kids.length){container.appendChild(node);spanFull(node);return;}
 		var rect=container.getBoundingClientRect();
 		var midY=rect.top+rect.height/2;
-		for(var j=0;j<kids.length;j++){
-			if(kids[j]===node||node.contains(kids[j]))continue;
-			var kr=kids[j].getBoundingClientRect();
-			if(kr.top+kr.height/2>=midY){container.insertBefore(node,kids[j]);return;}
+		var ref=null;
+		for(var i=0;i<kids.length;i++){
+			var kr=kids[i].getBoundingClientRect();
+			if(kr.top+kr.height/2>=midY){ref=kids[i];break;}
 		}
-		container.appendChild(node);
+		if(ref){container.insertBefore(node,ref);}else{container.appendChild(node);}
+		spanFull(node);
 	}
 	function placeMidpoint(s){
 		var sel=(s.getAttribute('data-engam-selector')||'').trim();
 		if(sel){
 			try{
-				var matches=document.querySelectorAll(sel),list=[];
-				for(var i=0;i<matches.length;i++){if(!s.contains(matches[i]))list.push(matches[i]);}
-				if(list.length>1){
-					var mid=list[Math.floor(list.length/2)];
-					if(mid&&mid.parentNode){mid.parentNode.insertBefore(s,mid);return;}
-				}else if(list.length===1){midpointInto(list[0],s);return;}
+				var matches=Array.prototype.filter.call(document.querySelectorAll(sel),function(m){return !s.contains(m);});
+				if(matches.length>1){
+					var mid=matches[Math.floor(matches.length/2)];
+					if(mid&&mid.parentNode){mid.parentNode.insertBefore(s,mid);spanFull(s);return;}
+				}else if(matches.length===1){insertNearMid(matches[0],s);return;}
 			}catch(e){}
 		}
-		// No (or unmatched) selector: drop at the visual midpoint of the main content.
-		var defs=['.entry-content','main article','main .e-con-inner','main .elementor-section-wrap','main','article','#primary','#content','.site-content'];
-		for(var d=0;d<defs.length;d++){
-			var el=document.querySelector(defs[d]);
-			if(el&&el.children.length){midpointInto(el,s);return;}
+		// No (or unmatched) selector: find the main content, then walk down to the busiest
+		// vertical stack of blocks (e.g. the events column) and drop the band near its midpoint.
+		var sels=['main .elementor','.elementor','main .entry-content','.entry-content','main article','main','article','#primary','#content','.site-content'];
+		var root=null;
+		for(var d=0;d<sels.length;d++){
+			var el=document.querySelector(sels[d]);
+			if(el&&el.getBoundingClientRect().height>200){root=el;break;}
 		}
+		if(!root)root=document.querySelector('main')||document.body;
+		var cur=root,guard=0;
+		while(guard++<8){
+			var kids=elChildren(cur);
+			if(kids.length===1){cur=kids[0];continue;}        // unwrap single-child wrappers
+			if(kids.length>1&&isVerticalStack(cur))break;      // reached the vertical stack
+			if(kids.length>1){                                 // horizontal/grid: dive into the busiest child
+				var best=kids[0],bestScore=-1;
+				kids.forEach(function(k){
+					var score=k.getElementsByTagName('*').length;
+					if(score>bestScore){bestScore=score;best=k;}
+				});
+				cur=best;continue;
+			}
+			break;
+		}
+		insertNearMid(cur,s);
 	}
 	function move(){
 		var hSlots=document.querySelectorAll('[data-engam-leaderboard="header"]');

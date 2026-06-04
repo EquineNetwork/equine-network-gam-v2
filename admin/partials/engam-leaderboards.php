@@ -153,8 +153,10 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         $pos_label = 'Footer';
                     } elseif ( $pos_val === 'midpoint' ) {
                         $pos_label = 'Half Page';
-                        if ( ! empty( $lb['target_pages'] ) ) {
-                            $pos_label .= ' (' . esc_html( $lb['target_pages'] ) . ')';
+                        $tp = trim( (string) ( $lb['target_pages'] ?? '' ) );
+                        if ( $tp !== '' ) {
+                            $tp_post = is_numeric( $tp ) ? get_post( (int) $tp ) : get_page_by_path( $tp );
+                            $pos_label .= ' (' . esc_html( $tp_post ? $tp_post->post_title : $tp ) . ')';
                         }
                     } else {
                         $pos_label = 'Header';
@@ -200,7 +202,7 @@ if ( $edit_id ) :
         'id' => '', 'name' => '', 'position' => 'header', 'slotname' => 'leaderboard',
         'target_pages' => '', 'target_selector' => '',
         'bg_color' => '',
-        'padding_top' => 0, 'padding_right' => 0, 'padding_bottom' => 0, 'padding_left' => 0,
+        'padding_top' => 10, 'padding_right' => 10, 'padding_bottom' => 10, 'padding_left' => 10,
         'active' => false,
     ) : $editing;
 ?>
@@ -240,10 +242,23 @@ if ( $edit_id ) :
             <div id="engam-lb-midpoint-fields" style="margin-top:18px;<?php echo ( ( $f['position'] ?? 'header' ) === 'midpoint' ) ? '' : 'display:none'; ?>">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
                     <div class="eg-settings-field">
-                        <label for="engam-lb-target-pages">Target Page(s)</label>
-                        <input class="eg-input" type="text" name="engam_lb_target_pages" id="engam-lb-target-pages"
-                            value="<?php echo esc_attr( $f['target_pages'] ?? '' ); ?>" placeholder="e.g. 42, events-calendar">
-                        <p class="eg-hint">Page IDs or slugs, comma-separated. The leaderboard renders only on these pages.</p>
+                        <label for="engam-lb-target-pages">Target Page</label>
+                        <?php
+                        $current_target = trim( (string) ( $f['target_pages'] ?? '' ) );
+                        $all_pages      = get_pages( array( 'sort_column' => 'post_title', 'sort_order' => 'ASC' ) );
+                        ?>
+                        <select class="eg-input" name="engam_lb_target_pages" id="engam-lb-target-pages">
+                            <option value="">— Select a page —</option>
+                            <?php foreach ( (array) $all_pages as $p ) :
+                                // Pre-select whether the saved value is a page ID (current/new) or a slug (legacy).
+                                $is_sel = ( (string) $p->ID === $current_target ) || ( strcasecmp( $p->post_name, $current_target ) === 0 );
+                            ?>
+                                <option value="<?php echo esc_attr( $p->ID ); ?>" <?php selected( $is_sel, true ); ?>>
+                                    <?php echo esc_html( ( $p->post_title !== '' ? $p->post_title : '(no title)' ) . ' — #' . $p->ID ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="eg-hint">The leaderboard renders only on this page.</p>
                     </div>
                     <div class="eg-settings-field">
                         <label for="engam-lb-target-selector">Insert Before <span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0">(CSS selector, optional)</span></label>
