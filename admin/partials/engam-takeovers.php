@@ -88,6 +88,12 @@ if ( isset( $_POST['engam_v2_to_nonce'] ) && wp_verify_nonce( sanitize_text_fiel
         }
 
         if ( $is_new ) {
+            // New records default to active — deactivate all others first so
+            // only one takeover is ever live at a time.
+            if ( $prev_active ) {
+                foreach ( $takeovers as &$t ) { $t['active'] = false; }
+                unset( $t );
+            }
             $takeovers[] = $record;
             $notice = 'Takeover "' . esc_html( $record['name'] ) . '" created.';
         } else {
@@ -102,13 +108,25 @@ if ( isset( $_POST['engam_v2_to_nonce'] ) && wp_verify_nonce( sanitize_text_fiel
     }
 
     if ( 'toggle' === $action && isset( $_POST['engam_to_id'] ) ) {
-        $tid = sanitize_text_field( wp_unslash( $_POST['engam_to_id'] ) );
+        $tid        = sanitize_text_field( wp_unslash( $_POST['engam_to_id'] ) );
+        $activating = false;
         foreach ( $takeovers as &$t ) {
-            if ( $t['id'] === $tid ) { $t['active'] = empty( $t['active'] ); break; }
+            if ( $t['id'] === $tid ) {
+                $t['active'] = empty( $t['active'] );
+                $activating  = $t['active'];
+                break;
+            }
         }
         unset( $t );
+        // Only one takeover can be live at a time — deactivate all others when activating.
+        if ( $activating ) {
+            foreach ( $takeovers as &$t ) {
+                if ( $t['id'] !== $tid ) $t['active'] = false;
+            }
+            unset( $t );
+        }
         update_option( 'engam_v2_takeovers', $takeovers );
-        $notice = 'Takeover updated.';
+        $notice = $activating ? 'Takeover activated. All others have been deactivated.' : 'Takeover deactivated.';
     }
 
     if ( 'delete' === $action && isset( $_POST['engam_to_id'] ) ) {
@@ -159,17 +177,6 @@ function engam_to_status( $t ) {
     return array( 'active', 'Active' );
 }
 
-// Check for multiple active entries simultaneously
-$active_count = 0;
-$now_check = current_time( 'timestamp' );
-foreach ( $takeovers as $to_check ) {
-    if ( empty( $to_check['active'] ) ) continue;
-    $s = ! empty( $to_check['schedule_start'] ) ? strtotime( $to_check['schedule_start'] ) : 0;
-    $e = ! empty( $to_check['schedule_end'] )   ? strtotime( $to_check['schedule_end'] )   : 0;
-    if ( $s && $now_check < $s ) continue;
-    if ( $e && $now_check > $e ) continue;
-    $active_count++;
-}
 
 include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 ?>
@@ -219,16 +226,10 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
     <div class="eg-head">
         <div>
             <h2>Takeover List</h2>
-            <p>Mastheads and branded wrap takeovers in one list. Only the first active + in-schedule entry will display.</p>
+            <p>Mastheads and branded wrap takeovers in one list. Only one entry can be active at a time — activating a new one automatically deactivates the current one.</p>
         </div>
         <button class="eg-btn" id="engam-to-add-btn" onclick="engamShowTypePicker()">+ Add New</button>
     </div>
-
-    <?php if ( $active_count > 1 ) : ?>
-    <div style="background:#fefce8;border:1px solid #fbbf24;border-radius:6px;padding:10px 14px;margin-bottom:14px;color:#92400e;font-size:13px;">
-        <strong>Warning:</strong> Multiple entries are currently active and in-schedule. Only the first active entry in the list will display.
-    </div>
-    <?php endif; ?>
 
     <?php if ( empty( $takeovers ) ) : ?>
         <div class="eg-empty">
