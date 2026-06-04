@@ -1,4 +1,5 @@
 <?php
+// Test comment added via Claude Code on 2026-06-03.
 /**
  * @wordpress-plugin
  * Plugin Name:       EquineNetwork GAM v2
