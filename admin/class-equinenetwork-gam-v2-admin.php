@@ -220,7 +220,7 @@ class Equinenetwork_Gam_V2_Admin {
 		if ( ! current_user_can( 'edit_posts' ) ) wp_die( -1 );
 
 		$api    = new Equinenetwork_Gam_V2_API();
-		$result = $api->test_connection();
+		$result = $api->diagnose();
 		wp_send_json( $result );
 	}
 

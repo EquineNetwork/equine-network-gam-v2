@@ -80,6 +80,7 @@
 #engam-v2-wrap .eg-toggle input:checked + .eg-toggle-track{background:#d0ff00}
 #engam-v2-wrap .eg-toggle input:checked + .eg-toggle-track .eg-toggle-thumb{transform:translateX(18px);background:#050505}
 #engam-v2-wrap .eg-toggle input:focus-visible + .eg-toggle-track{outline:2px solid #d0ff00;outline-offset:2px}
+#engam-api-status{white-space:pre-line;line-height:1.55;text-align:left;word-break:break-word;max-height:420px;overflow:auto}
 #engam-api-status.success{background:#d0ff00;color:#111}
 #engam-api-status.error{background:#ffdddd;color:#a00}
 #engam-api-status.info{background:#f0f0f0;color:#555}
