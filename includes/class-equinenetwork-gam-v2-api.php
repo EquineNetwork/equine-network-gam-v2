@@ -11,7 +11,7 @@ class Equinenetwork_Gam_V2_API {
 	const CACHE_DURATION   = 3600; // 1 hour
 	const TOKEN_CACHE      = 'engam_v2_access_token';
 	const GAM_REST_BASE    = 'https://admanager.googleapis.com/v1';
-	const CACHE_SITE_UNITS = 'engam_v2_site_unit_ids';
+	const CACHE_SITE_UNITS = 'engam_v2_site_unit_res'; // stores ad unit resource names
 
 	private $credentials;
 	private $network_code;
@@ -139,11 +139,12 @@ class Equinenetwork_Gam_V2_API {
 	}
 
 	/**
-	 * Resolves the site's root ad unit ID (and one level of children) from the GAM network path.
+	 * Resolves the site's root ad unit resource name (and one level of children) from the GAM network path.
 	 * The network code "/22345131513/nationalteamroping" implies the root ad unit code is "nationalteamroping".
+	 * Returns an array of full resource names, e.g. "networks/22345131513/adUnits/23297243907".
 	 * Results are cached for 1 hour alongside line items.
 	 */
-	private function get_site_ad_unit_ids( $token ) {
+	private function get_site_ad_unit_resources( $token ) {
 		$cached = get_transient( self::CACHE_SITE_UNITS );
 		if ( is_array( $cached ) ) return $cached;
 
@@ -170,62 +171,138 @@ class Equinenetwork_Gam_V2_API {
 			$page_token = $body['nextPageToken'] ?? null;
 		} while ( $page_token );
 
-		// Find root ad unit by code.
+		// Find the root ad unit by code, then collect its direct children (one level deep).
 		$root_resource = null;
-		$ids           = array();
+		$resources     = array();
 		foreach ( $all_units as $au ) {
-			if ( isset( $au['adUnitCode'] ) && strcasecmp( $au['adUnitCode'], $site_code ) === 0 ) {
-				$root_resource = $au['name'] ?? null;
-				$id_parts      = explode( '/', $root_resource ?? '' );
-				$root_id       = end( $id_parts );
-				if ( $root_id ) $ids[] = (string) $root_id;
+			if ( isset( $au['adUnitCode'], $au['name'] ) && strcasecmp( $au['adUnitCode'], $site_code ) === 0 ) {
+				$root_resource = $au['name'];
+				$resources[]   = $au['name'];
 				break;
 			}
 		}
 
-		// Also collect direct children (one level deep via parentAdUnit field).
 		if ( $root_resource ) {
 			foreach ( $all_units as $au ) {
-				$parent = $au['parentAdUnit'] ?? '';
-				if ( $parent === $root_resource ) {
-					$id_parts = explode( '/', $au['name'] ?? '' );
-					$child_id = end( $id_parts );
-					if ( $child_id ) $ids[] = (string) $child_id;
+				if ( isset( $au['name'] ) && ( $au['parentAdUnit'] ?? '' ) === $root_resource ) {
+					$resources[] = $au['name'];
 				}
 			}
 		}
 
-		set_transient( self::CACHE_SITE_UNITS, $ids, self::CACHE_DURATION );
-		return $ids;
+		set_transient( self::CACHE_SITE_UNITS, $resources, self::CACHE_DURATION );
+		return $resources;
 	}
 
 	/**
 	 * Fetches line items from the GAM REST API (admanager.googleapis.com/v1).
-	 * Filters to only line items targeting this site's ad unit (derived from the network code).
-	 * Paginates through all results automatically.
+	 *
+	 * Strategy: ask GAM to do the filtering server-side via the list `filter` parameter, scoped to
+	 * the line items targeting this site's ad unit(s). The list response omits the heavy `targeting`
+	 * object, so client-side filtering isn't possible — and server-side filtering also avoids pulling
+	 * thousands of unrelated line items. If the filter is rejected (unsupported syntax) or matches
+	 * nothing, we fall back to the full unfiltered list so the dashboard never shows a false zero.
 	 */
 	private function fetch_line_items( $token ) {
-		$network_code     = preg_replace( '/[^0-9]/', '', $this->network_code );
-		$base_url         = self::GAM_REST_BASE . '/networks/' . $network_code . '/lineItems';
-		$all_items        = array(); // Every line item (unfiltered) — used as a safe fallback.
-		$filtered_items   = array(); // Only those targeting this site's ad unit(s).
-		$filter_keyword   = strtolower( get_option( 'equinenetwork_gam_v2_filter', '' ) );
-		$site_ad_unit_ids = $this->get_site_ad_unit_ids( $token );
-		$saw_targeting    = false; // True if the API returned ad-unit targeting on any line item.
-		$page_token       = null;
+		$network_code = preg_replace( '/[^0-9]/', '', $this->network_code );
+		$base_url     = self::GAM_REST_BASE . '/networks/' . $network_code . '/lineItems';
+		$site_units   = $this->get_site_ad_unit_resources( $token );
 
-		do {
-			$params = array(
-				'pageSize' => 1000,
-				// Explicitly request the targeting field — list endpoints often omit heavy nested
-				// objects unless asked for via the fields partial-response parameter.
-				'fields'   => 'lineItems(name,displayName,externalId,entityStatus,startTime,endTime,targeting),nextPageToken',
-			);
-			if ( $page_token ) {
-				$params['pageToken'] = $page_token;
+		$raw = null;
+
+		if ( ! empty( $site_units ) ) {
+			// AIP-160 filter on the targeted ad unit resource name. The exact operator for traversing
+			// the repeated targetedAdUnits field can be "=" or ":" depending on the field; try both
+			// before giving up so we don't depend on guessing.
+			foreach ( array( '=', ':' ) as $op ) {
+				$clauses = array();
+				foreach ( $site_units as $resource ) {
+					$clauses[] = 'targeting.inventoryTargeting.targetedAdUnits.adUnit ' . $op . ' "' . $resource . '"';
+				}
+				$filter = implode( ' OR ', $clauses );
+
+				$result = $this->list_line_items_raw( $token, $base_url, $filter );
+				if ( is_wp_error( $result ) ) {
+					continue; // Filter syntax rejected — try the next operator.
+				}
+				if ( ! empty( $result ) ) {
+					$raw = $result; // Got matches — trust the server-side filter.
+					break;
+				}
+				// 200 but zero matches: ambiguous (could be wrong operator). Try the next, else fall back.
+			}
+		}
+
+		// Fallback: no site units resolved, or filtering failed / returned nothing.
+		if ( $raw === null ) {
+			$result = $this->list_line_items_raw( $token, $base_url, '' );
+			if ( is_wp_error( $result ) ) {
+				return $result;
+			}
+			$raw = $result;
+		}
+
+		// Map raw GAM line items into the shape the rest of the plugin expects.
+		$filter_keyword = strtolower( get_option( 'equinenetwork_gam_v2_filter', '' ) );
+		$items          = array();
+		foreach ( $raw as $li ) {
+			$name  = isset( $li['name'] ) ? $li['name'] : '';
+			$id    = isset( $li['externalId'] ) && $li['externalId'] !== '' ? $li['externalId'] : basename( $name );
+			$label = isset( $li['displayName'] ) && $li['displayName'] !== '' ? $li['displayName'] : basename( $name );
+
+			// Optional secondary keyword filter (kept for backward compatibility).
+			if ( $filter_keyword && stripos( $label, $filter_keyword ) === false && stripos( $id, $filter_keyword ) === false ) {
+				continue;
 			}
 
-			$response = wp_remote_get( add_query_arg( $params, $base_url ), array(
+			$items[] = array(
+				'id'            => $id,
+				'gam_id'        => $name !== '' ? basename( $name ) : '',
+				'name'          => $label,
+				'status'        => isset( $li['entityStatus'] ) ? $li['entityStatus'] : ( isset( $li['deliveryStatus'] ) ? $li['deliveryStatus'] : ( isset( $li['status'] ) ? $li['status'] : '' ) ),
+				'resource_name' => $name,
+				'start_time'    => isset( $li['startTime'] ) ? $li['startTime'] : '',
+				'end_time'      => isset( $li['endTime'] )   ? $li['endTime']   : '',
+			);
+		}
+
+		usort( $items, function( $a, $b ) {
+			return strcasecmp( $a['name'], $b['name'] );
+		} );
+
+		if ( ! empty( $items ) ) {
+			set_transient( self::CACHE_KEY, $items, self::CACHE_DURATION );
+		}
+
+		return $items;
+	}
+
+	/**
+	 * Low-level paginating fetch of raw line item objects from the GAM list endpoint.
+	 * Returns an array of raw line item arrays, or a WP_Error on transport / HTTP failure.
+	 *
+	 * @param string $token    OAuth2 access token.
+	 * @param string $base_url Fully-qualified lineItems list URL.
+	 * @param string $filter   Optional AIP-160 filter expression (empty = no filter).
+	 */
+	private function list_line_items_raw( $token, $base_url, $filter = '' ) {
+		$raw        = array();
+		$page_token = null;
+
+		do {
+			// Build the query string with RFC-3986 encoding (spaces -> %20, quotes -> %22) so the
+			// filter expression survives transport intact. add_query_arg() encodes spaces as "+",
+			// which the filter parser does not accept.
+			$query = array( 'pageSize=1000' );
+			if ( $filter !== '' ) {
+				$query[] = 'filter=' . rawurlencode( $filter );
+			}
+			if ( $page_token ) {
+				$query[] = 'pageToken=' . rawurlencode( $page_token );
+			}
+			$url = $base_url . '?' . implode( '&', $query );
+
+			$response = wp_remote_get( $url, array(
 				'timeout' => 30,
 				'headers' => array( 'Authorization' => 'Bearer ' . $token ),
 			) );
@@ -242,78 +319,14 @@ class Equinenetwork_Gam_V2_API {
 				return new WP_Error( 'api_error', 'GAM API error (HTTP ' . $code . '): ' . substr( $msg, 0, 300 ) );
 			}
 
-			$page_token = isset( $body['nextPageToken'] ) ? $body['nextPageToken'] : null;
-
-		if ( ! empty( $body['lineItems'] ) ) {
-			foreach ( $body['lineItems'] as $li ) {
-				$id = isset( $li['externalId'] ) && $li['externalId'] !== ''
-					? $li['externalId']
-					: basename( $li['name'] );
-
-				$label = isset( $li['displayName'] ) && $li['displayName'] !== ''
-					? $li['displayName']
-					: basename( $li['name'] );
-
-				// Apply site filter keyword if set (fallback / additional filter).
-				if ( $filter_keyword && stripos( $label, $filter_keyword ) === false && stripos( $id, $filter_keyword ) === false ) {
-					continue;
-				}
-
-				$gam_id = isset( $li['name'] ) ? basename( $li['name'] ) : '';
-
-				$item = array(
-					'id'            => $id,
-					'gam_id'        => $gam_id,
-					'name'          => $label,
-					'status'        => isset( $li['entityStatus'] ) ? $li['entityStatus'] : ( isset( $li['deliveryStatus'] ) ? $li['deliveryStatus'] : ( isset( $li['status'] ) ? $li['status'] : '' ) ),
-					'resource_name' => $li['name'] ?? '',
-					'start_time'    => isset( $li['startTime'] ) ? $li['startTime'] : '',
-					'end_time'      => isset( $li['endTime'] )   ? $li['endTime']   : '',
-				);
-
-				$all_items[] = $item;
-
-				// Mark that the API is returning targeting data (even if this item targets all inventory).
-				if ( isset( $li['targeting'] ) ) {
-					$saw_targeting = true;
-				}
-
-				// Determine whether this line item targets the site's ad unit(s).
-				if ( ! empty( $site_ad_unit_ids ) && ! empty( $li['targeting']['inventoryTargeting']['targetedAdUnits'] ) ) {
-					foreach ( $li['targeting']['inventoryTargeting']['targetedAdUnits'] as $t ) {
-						// v1 REST uses the resource name "adUnit" (…/adUnits/ID); legacy uses numeric "adUnitId".
-						$tid = '';
-						if ( isset( $t['adUnit'] ) && $t['adUnit'] !== '' ) {
-							$tid = (string) basename( $t['adUnit'] );
-						} elseif ( isset( $t['adUnitId'] ) ) {
-							$tid = (string) $t['adUnitId'];
-						}
-						if ( $tid !== '' && in_array( $tid, $site_ad_unit_ids, true ) ) {
-							$filtered_items[] = $item;
-							break;
-						}
-					}
-				}
+			if ( ! empty( $body['lineItems'] ) ) {
+				$raw = array_merge( $raw, $body['lineItems'] );
 			}
-		}
 
+			$page_token = isset( $body['nextPageToken'] ) ? $body['nextPageToken'] : null;
 		} while ( $page_token );
 
-		// Choose the result set:
-		// - If we resolved the site's ad units AND the API gave us targeting data, use the filtered list.
-		// - Otherwise (no ad units resolved, or the list endpoint omitted targeting) fall back to the
-		//   full list so the dashboard never shows 0 when real line items exist.
-		$items = ( ! empty( $site_ad_unit_ids ) && $saw_targeting ) ? $filtered_items : $all_items;
-
-		usort( $items, function( $a, $b ) {
-			return strcasecmp( $a['name'], $b['name'] );
-		} );
-
-		if ( ! empty( $items ) ) {
-			set_transient( self::CACHE_KEY, $items, self::CACHE_DURATION );
-		}
-
-		return $items;
+		return $raw;
 	}
 
 	/**
