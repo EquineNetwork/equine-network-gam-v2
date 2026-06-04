@@ -12,6 +12,8 @@ class Equinenetwork_Gam_V2_API {
 	const TOKEN_CACHE      = 'engam_v2_access_token';
 	const GAM_REST_BASE    = 'https://admanager.googleapis.com/v1';
 	const CACHE_SITE_UNITS = 'engam_v2_site_unit_res'; // stores ad unit resource names
+	const REPORT_NAME      = 'EN Plugin — Line Items by Ad Unit (auto)';
+	const REPORT_RANGE     = 'LAST_90_DAYS'; // window used to detect line items running on the site
 
 	private $credentials;
 	private $network_code;
@@ -195,54 +197,43 @@ class Equinenetwork_Gam_V2_API {
 	}
 
 	/**
-	 * Fetches line items from the GAM REST API (admanager.googleapis.com/v1).
+	 * Fetches the line items for THIS site and caches them.
 	 *
-	 * Strategy: ask GAM to do the filtering server-side via the list `filter` parameter, scoped to
-	 * the line items targeting this site's ad unit(s). The list response omits the heavy `targeting`
-	 * object, so client-side filtering isn't possible — and server-side filtering also avoids pulling
-	 * thousands of unrelated line items. If the filter is rejected (unsupported syntax) or matches
-	 * nothing, we fall back to the full unfiltered list so the dashboard never shows a false zero.
+	 * GAM does not allow filtering the line items list by ad unit, and the list response omits the
+	 * targeting object — so the only way to get a per-site list is to run a GAM report scoped to the
+	 * site's ad unit(s). If the report path fails for any reason, we fall back to the full unfiltered
+	 * list so the dashboard stays populated rather than erroring or showing zero.
 	 */
 	private function fetch_line_items( $token ) {
+		$report_items = $this->run_ad_unit_report( $token );
+		if ( ! is_wp_error( $report_items ) ) {
+			usort( $report_items, function( $a, $b ) { return strcasecmp( $a['name'], $b['name'] ); } );
+			set_transient( self::CACHE_KEY, $report_items, self::CACHE_DURATION );
+			return $report_items;
+		}
+
+		// Fallback: full unfiltered list.
 		$network_code = preg_replace( '/[^0-9]/', '', $this->network_code );
 		$base_url     = self::GAM_REST_BASE . '/networks/' . $network_code . '/lineItems';
-		$site_units   = $this->get_site_ad_unit_resources( $token );
-
-		$raw = null;
-
-		if ( ! empty( $site_units ) ) {
-			// AIP-160 filter on the targeted ad unit resource name. The exact operator for traversing
-			// the repeated targetedAdUnits field can be "=" or ":" depending on the field; try both
-			// before giving up so we don't depend on guessing.
-			foreach ( array( '=', ':' ) as $op ) {
-				$clauses = array();
-				foreach ( $site_units as $resource ) {
-					$clauses[] = 'targeting.inventoryTargeting.targetedAdUnits.adUnit ' . $op . ' "' . $resource . '"';
-				}
-				$filter = implode( ' OR ', $clauses );
-
-				$result = $this->list_line_items_raw( $token, $base_url, $filter );
-				if ( is_wp_error( $result ) ) {
-					continue; // Filter syntax rejected — try the next operator.
-				}
-				if ( ! empty( $result ) ) {
-					$raw = $result; // Got matches — trust the server-side filter.
-					break;
-				}
-				// 200 but zero matches: ambiguous (could be wrong operator). Try the next, else fall back.
-			}
+		$raw          = $this->list_line_items_raw( $token, $base_url, '' );
+		if ( is_wp_error( $raw ) ) {
+			return $raw;
 		}
 
-		// Fallback: no site units resolved, or filtering failed / returned nothing.
-		if ( $raw === null ) {
-			$result = $this->list_line_items_raw( $token, $base_url, '' );
-			if ( is_wp_error( $result ) ) {
-				return $result;
-			}
-			$raw = $result;
+		$items = $this->map_raw_line_items( $raw );
+		usort( $items, function( $a, $b ) { return strcasecmp( $a['name'], $b['name'] ); } );
+
+		if ( ! empty( $items ) ) {
+			set_transient( self::CACHE_KEY, $items, self::CACHE_DURATION );
 		}
 
-		// Map raw GAM line items into the shape the rest of the plugin expects.
+		return $items;
+	}
+
+	/**
+	 * Maps raw GAM lineItems.list objects into the shape the rest of the plugin expects.
+	 */
+	private function map_raw_line_items( $raw ) {
 		$filter_keyword = strtolower( get_option( 'equinenetwork_gam_v2_filter', '' ) );
 		$items          = array();
 		foreach ( $raw as $li ) {
@@ -250,7 +241,6 @@ class Equinenetwork_Gam_V2_API {
 			$id    = isset( $li['externalId'] ) && $li['externalId'] !== '' ? $li['externalId'] : basename( $name );
 			$label = isset( $li['displayName'] ) && $li['displayName'] !== '' ? $li['displayName'] : basename( $name );
 
-			// Optional secondary keyword filter (kept for backward compatibility).
 			if ( $filter_keyword && stripos( $label, $filter_keyword ) === false && stripos( $id, $filter_keyword ) === false ) {
 				continue;
 			}
@@ -265,16 +255,220 @@ class Equinenetwork_Gam_V2_API {
 				'end_time'      => isset( $li['endTime'] )   ? $li['endTime']   : '',
 			);
 		}
+		return $items;
+	}
 
-		usort( $items, function( $a, $b ) {
-			return strcasecmp( $a['name'], $b['name'] );
-		} );
+	/**
+	 * Runs a GAM report scoped to the site's ad unit(s) and returns the line items that delivered
+	 * to that inventory — the per-site list. This is the same data behind the GAM UI's "Line items
+	 * against this inventory" tab. Creates a temporary report, runs it (async), reads the rows, and
+	 * deletes the report afterward.
+	 *
+	 * @param string     $token OAuth2 access token.
+	 * @param array|null $log   Optional — receives human-readable diagnostic lines (used by diagnose()).
+	 * @return array|WP_Error   Mapped line item rows, or WP_Error on any failure.
+	 */
+	private function run_ad_unit_report( $token, &$log = null ) {
+		$network_code = preg_replace( '/[^0-9]/', '', $this->network_code );
+		$net_base     = self::GAM_REST_BASE . '/networks/' . $network_code;
 
-		if ( ! empty( $items ) ) {
-			set_transient( self::CACHE_KEY, $items, self::CACHE_DURATION );
+		// Resolve numeric ad unit IDs (root + direct children) from the network path.
+		$resources   = $this->get_site_ad_unit_resources( $token );
+		$ad_unit_ids = array();
+		foreach ( $resources as $r ) {
+			$ad_unit_ids[] = (string) basename( $r );
+		}
+		if ( $log !== null ) {
+			$log[] = 'Ad unit IDs for report filter: ' . ( $ad_unit_ids ? implode( ', ', $ad_unit_ids ) : '(none)' );
+		}
+		if ( empty( $ad_unit_ids ) ) {
+			return new WP_Error( 'no_ad_units', 'Could not resolve the site ad unit for the report filter.' );
 		}
 
+		// 1) Create a report scoped to those ad units.
+		$report_body = array(
+			'displayName'      => self::REPORT_NAME,
+			'reportDefinition' => array(
+				'reportType' => 'HISTORICAL',
+				'dateRange'  => array( 'relative' => self::REPORT_RANGE ),
+				'fields'     => array(
+					array( 'dimension' => 'LINE_ITEM_ID' ),
+					array( 'dimension' => 'LINE_ITEM_NAME' ),
+					array( 'metric'    => 'AD_SERVER_IMPRESSIONS' ),
+				),
+				'filters'    => array(
+					array(
+						'fieldFilter' => array(
+							'field'     => array( 'dimension' => 'AD_UNIT_ID' ),
+							'operation' => 'IN',
+							'values'    => array_map( function( $id ) { return array( 'intValue' => $id ); }, $ad_unit_ids ),
+						),
+					),
+				),
+			),
+		);
+
+		$created = $this->gam_json_request( 'POST', $net_base . '/reports', $token, $report_body );
+		if ( is_wp_error( $created ) ) {
+			if ( $log !== null ) $log[] = 'Create report → ' . $created->get_error_message();
+			return $created;
+		}
+		$report_name = isset( $created['name'] ) ? $created['name'] : '';
+		if ( $log !== null ) $log[] = 'Created report: ' . $report_name;
+		if ( $report_name === '' ) {
+			return new WP_Error( 'report_no_name', 'Report created but the API returned no resource name.' );
+		}
+
+		// 2) Run the report (async long-running operation).
+		$op = $this->gam_json_request( 'POST', self::GAM_REST_BASE . '/' . $report_name . ':run', $token, new stdClass() );
+		if ( is_wp_error( $op ) ) {
+			if ( $log !== null ) $log[] = 'Run report → ' . $op->get_error_message();
+			$this->delete_report( $token, $report_name );
+			return $op;
+		}
+		$op_name = isset( $op['name'] ) ? $op['name'] : '';
+		if ( $log !== null ) $log[] = 'Run operation: ' . ( $op_name ? $op_name : '(returned inline)' );
+
+		// 3) Poll the operation until done (bounded so we stay within PHP execution limits).
+		$result_name = '';
+		if ( ! empty( $op['done'] ) && isset( $op['response']['reportResult'] ) ) {
+			$result_name = $op['response']['reportResult'];
+		} elseif ( $op_name ) {
+			$deadline = time() + 22;
+			$delay    = 2;
+			while ( time() < $deadline ) {
+				sleep( $delay );
+				$pop = $this->gam_json_request( 'GET', self::GAM_REST_BASE . '/' . $op_name, $token );
+				if ( is_wp_error( $pop ) ) {
+					if ( $log !== null ) $log[] = 'Poll → ' . $pop->get_error_message();
+					$this->delete_report( $token, $report_name );
+					return $pop;
+				}
+				if ( ! empty( $pop['done'] ) ) {
+					if ( isset( $pop['error'] ) ) {
+						$emsg = isset( $pop['error']['message'] ) ? $pop['error']['message'] : 'report run failed';
+						if ( $log !== null ) $log[] = 'Operation finished with error: ' . $emsg;
+						$this->delete_report( $token, $report_name );
+						return new WP_Error( 'report_failed', 'Report run failed: ' . $emsg );
+					}
+					$result_name = isset( $pop['response']['reportResult'] ) ? $pop['response']['reportResult'] : '';
+					break;
+				}
+				$delay = min( $delay + 1, 5 );
+			}
+		}
+		if ( $result_name === '' ) {
+			if ( $log !== null ) $log[] = 'No report result name (operation did not finish in time).';
+			$this->delete_report( $token, $report_name );
+			return new WP_Error( 'report_timeout', 'Report did not finish in the allotted time.' );
+		}
+		if ( $log !== null ) $log[] = 'Report result: ' . $result_name;
+
+		// 4) Fetch the result rows (paginated).
+		$items      = array();
+		$page_token = null;
+		do {
+			$url = self::GAM_REST_BASE . '/' . $result_name . ':fetchRows?pageSize=1000';
+			if ( $page_token ) {
+				$url .= '&pageToken=' . rawurlencode( $page_token );
+			}
+			$fbody = $this->gam_json_request( 'GET', $url, $token );
+			if ( is_wp_error( $fbody ) ) {
+				if ( $log !== null ) $log[] = 'Fetch rows → ' . $fbody->get_error_message();
+				$this->delete_report( $token, $report_name );
+				return $fbody;
+			}
+			if ( ! empty( $fbody['rows'] ) ) {
+				foreach ( $fbody['rows'] as $row ) {
+					$dv      = isset( $row['dimensionValues'] ) ? $row['dimensionValues'] : array();
+					$li_id   = isset( $dv[0] ) ? $this->report_value_string( $dv[0] ) : '';
+					$li_name = isset( $dv[1] ) ? $this->report_value_string( $dv[1] ) : '';
+					if ( $li_id === '' && $li_name === '' ) {
+						continue;
+					}
+					$items[] = array(
+						'id'            => $li_id,
+						'gam_id'        => $li_id,
+						'name'          => $li_name !== '' ? $li_name : $li_id,
+						'status'        => '',
+						'resource_name' => $li_id !== '' ? ( 'networks/' . $network_code . '/lineItems/' . $li_id ) : '',
+						'start_time'    => '',
+						'end_time'      => '',
+					);
+				}
+			}
+			$page_token = isset( $fbody['nextPageToken'] ) ? $fbody['nextPageToken'] : null;
+		} while ( $page_token );
+
+		if ( $log !== null ) $log[] = 'Line items returned by report: ' . count( $items );
+
+		// 5) Best-effort cleanup so we don't clutter the GAM Reports UI.
+		$this->delete_report( $token, $report_name );
+
 		return $items;
+	}
+
+	/**
+	 * Extracts a scalar string out of a report ReportValue object.
+	 */
+	private function report_value_string( $val ) {
+		if ( ! is_array( $val ) ) {
+			return (string) $val;
+		}
+		if ( isset( $val['stringValue'] ) ) return (string) $val['stringValue'];
+		if ( isset( $val['intValue'] ) )    return (string) $val['intValue'];
+		if ( isset( $val['doubleValue'] ) ) return (string) $val['doubleValue'];
+		return '';
+	}
+
+	/**
+	 * Best-effort deletion of a temporary report.
+	 */
+	private function delete_report( $token, $report_name ) {
+		if ( ! $report_name ) {
+			return;
+		}
+		wp_remote_request( self::GAM_REST_BASE . '/' . $report_name, array(
+			'method'  => 'DELETE',
+			'timeout' => 15,
+			'headers' => array( 'Authorization' => 'Bearer ' . $token ),
+		) );
+	}
+
+	/**
+	 * Performs a JSON GAM API request and returns the decoded body, or a WP_Error carrying the
+	 * exact HTTP status and error message from GAM.
+	 *
+	 * @param string $method GET or POST.
+	 * @param string $url    Full request URL.
+	 * @param string $token  OAuth2 access token.
+	 * @param mixed  $body   Optional body to JSON-encode for POST.
+	 */
+	private function gam_json_request( $method, $url, $token, $body = null ) {
+		$args = array(
+			'method'  => $method,
+			'timeout' => 30,
+			'headers' => array( 'Authorization' => 'Bearer ' . $token ),
+		);
+		if ( 'POST' === $method ) {
+			$args['headers']['Content-Type'] = 'application/json';
+			$args['body']                    = wp_json_encode( null === $body ? new stdClass() : $body );
+		}
+
+		$resp = wp_remote_request( $url, $args );
+		if ( is_wp_error( $resp ) ) {
+			return new WP_Error( 'transport', 'transport error: ' . $resp->get_error_message() );
+		}
+
+		$code = (int) wp_remote_retrieve_response_code( $resp );
+		$body = json_decode( wp_remote_retrieve_body( $resp ), true );
+
+		if ( $code < 200 || $code >= 300 ) {
+			$msg = isset( $body['error']['message'] ) ? $body['error']['message'] : substr( wp_remote_retrieve_body( $resp ), 0, 400 );
+			return new WP_Error( 'http_' . $code, 'HTTP ' . $code . ': ' . $msg );
+		}
+
+		return is_array( $body ) ? $body : array();
 	}
 
 	/**
@@ -651,9 +845,9 @@ class Equinenetwork_Gam_V2_API {
 	}
 
 	/**
-	 * Diagnostic probe for the line item filter. Reports, step by step, what the GAM API actually
-	 * returns so we can see why filtering is or isn't working — including the literal HTTP response
-	 * for each filter attempt. Surfaced via the "Test Connection" button.
+	 * Diagnostic probe for the per-site report flow. Runs the full ad-unit report and reports each
+	 * step (ad unit resolution, create, run, poll, fetch) with the exact GAM response, so any failure
+	 * is visible. Surfaced via the "Test Connection" button.
 	 */
 	public function diagnose() {
 		if ( ! $this->is_configured() ) {
@@ -665,74 +859,28 @@ class Equinenetwork_Gam_V2_API {
 			return array( 'success' => false, 'message' => 'OAuth token error: ' . $token->get_error_message() );
 		}
 
-		$network_code = preg_replace( '/[^0-9]/', '', $this->network_code );
-		$base_url     = self::GAM_REST_BASE . '/networks/' . $network_code . '/lineItems';
-		$lines        = array();
-
-		$lines[] = 'Network path: ' . $this->network_code;
-
-		// Step 1: resolve the site's ad unit resource names (force fresh — ignore cache).
+		// Force a fresh ad unit lookup so the diagnostic reflects current state.
 		delete_transient( self::CACHE_SITE_UNITS );
-		$units = $this->get_site_ad_unit_resources( $token );
-		$lines[] = '';
-		$lines[] = '1) Site ad units resolved: ' . count( $units );
-		foreach ( array_slice( $units, 0, 8 ) as $u ) {
-			$lines[] = '   • ' . $u;
-		}
-		if ( empty( $units ) ) {
-			$lines[] = '   ⚠ Could not match the network path\'s last segment to an ad unit code.';
-		}
 
-		// Step 2: probe each candidate filter operator and report the raw HTTP outcome.
-		if ( ! empty( $units ) ) {
-			foreach ( array( '=', ':' ) as $op ) {
-				$clauses = array();
-				foreach ( $units as $r ) {
-					$clauses[] = 'targeting.inventoryTargeting.targetedAdUnits.adUnit ' . $op . ' "' . $r . '"';
-				}
-				$filter = implode( ' OR ', $clauses );
-				$url    = $base_url . '?pageSize=1000&filter=' . rawurlencode( $filter );
+		$log     = array();
+		$log[]   = 'Network path: ' . $this->network_code;
+		$log[]   = 'Date window: ' . self::REPORT_RANGE;
+		$log[]   = '';
+		$start   = microtime( true );
+		$items   = $this->run_ad_unit_report( $token, $log );
+		$elapsed = round( microtime( true ) - $start, 1 );
 
-				$resp = wp_remote_get( $url, array(
-					'timeout' => 30,
-					'headers' => array( 'Authorization' => 'Bearer ' . $token ),
-				) );
-
-				$lines[] = '';
-				$lines[] = '2) Filter with operator "' . $op . '":';
-				$lines[] = '   ' . $filter;
-				if ( is_wp_error( $resp ) ) {
-					$lines[] = '   → transport error: ' . $resp->get_error_message();
-					continue;
-				}
-				$code = wp_remote_retrieve_response_code( $resp );
-				$body = json_decode( wp_remote_retrieve_body( $resp ), true );
-				if ( $code !== 200 ) {
-					$msg = isset( $body['error']['message'] ) ? $body['error']['message'] : substr( wp_remote_retrieve_body( $resp ), 0, 400 );
-					$lines[] = '   → HTTP ' . $code . ': ' . $msg;
-				} else {
-					$cnt  = isset( $body['lineItems'] ) ? count( $body['lineItems'] ) : 0;
-					$more = isset( $body['nextPageToken'] ) ? ' (+ more pages)' : '';
-					$lines[] = '   → HTTP 200: ' . $cnt . ' line items on first page' . $more;
-				}
-			}
+		$log[] = '';
+		if ( is_wp_error( $items ) ) {
+			$log[] = 'RESULT: report path failed — ' . $items->get_error_message();
+			$log[] = '(The dashboard falls back to the full network list when this happens.)';
+			return array( 'success' => false, 'message' => implode( "\n", $log ) );
 		}
 
-		// Step 3: confirm what an unfiltered request looks like (first page only).
-		$resp = wp_remote_get( $base_url . '?pageSize=1', array(
-			'timeout' => 30,
-			'headers' => array( 'Authorization' => 'Bearer ' . $token ),
-		) );
-		$lines[] = '';
-		if ( ! is_wp_error( $resp ) && wp_remote_retrieve_response_code( $resp ) === 200 ) {
-			$body  = json_decode( wp_remote_retrieve_body( $resp ), true );
-			$first = isset( $body['lineItems'][0] ) ? $body['lineItems'][0] : array();
-			$lines[] = '3) Sample line item keys returned by list: ' . ( $first ? implode( ', ', array_keys( $first ) ) : '(none)' );
-			$lines[] = '   targeting present in list response: ' . ( isset( $first['targeting'] ) ? 'YES' : 'no' );
-		} else {
-			$lines[] = '3) Unfiltered probe failed.';
+		$log[] = 'RESULT: ' . count( $items ) . ' line items for this site (in ' . $elapsed . 's).';
+		foreach ( array_slice( $items, 0, 12 ) as $it ) {
+			$log[] = '   • ' . $it['name'] . ' (' . $it['gam_id'] . ')';
 		}
-
-		return array( 'success' => true, 'message' => implode( "\n", $lines ) );
+		return array( 'success' => true, 'message' => implode( "\n", $log ) );
 	}
 }

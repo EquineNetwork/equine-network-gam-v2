@@ -93,5 +93,18 @@
   #engam-v2-wrap .eg-mast h1{font-size:28px}
   #engam-v2-wrap .eg-mast-actions{flex-wrap:wrap}
   #engam-v2-wrap .eg-content{padding:0 12px 40px}
+  /* Collapse EVERY multi-column grid to a single column on mobile — including the inline-styled
+     form rows (page targeting, name/position, padding, hide rules, metric cards, settings) whose
+     inline grid-template-columns would otherwise override the class-based rules above. */
+  #engam-v2-wrap [style*="grid-template-columns"]{grid-template-columns:1fr!important}
+  /* Every text-like input, select and textarea spans the full width on mobile. */
+  #engam-v2-wrap .eg-input,
+  #engam-v2-wrap select,
+  #engam-v2-wrap textarea,
+  #engam-v2-wrap input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=submit]):not([type=button]){
+    width:100%!important;max-width:100%!important;box-sizing:border-box
+  }
+  /* Masthead action buttons stack full width instead of crowding. */
+  #engam-v2-wrap .eg-mast-actions .eg-btn{flex:1 1 100%;text-align:center}
 }
 </style>
