@@ -326,6 +326,9 @@ class Equinenetwork_Gam_V2_Widget extends \Elementor\Widget_Base {
 			$dh      = (int) $r['custom_dh'];
 			$mw      = (int) $r['custom_mw'];
 			$mh      = (int) $r['custom_mh'];
+			if ( $dw <= 0 || $dh <= 0 || $mw <= 0 || $mh <= 0 ) {
+				return;
+			}
 			$desktop = array( $dw, $dh );
 			$mobile  = array( $mw, $mh );
 			$sizes   = ( $dw === $mw && $dh === $mh ) ? array( $dw, $dh ) : array( array( $mw, $mh ), array( $dw, $dh ) );

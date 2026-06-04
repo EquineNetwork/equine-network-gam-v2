@@ -27,8 +27,8 @@ class Equinenetwork_Gam_V2_Leaderboard {
 			'class'            => 'equinenetworkad engam-leaderboard-ad',
 			'data-align'       => 'center',
 			'data-slotname'    => $slotname,
-			'data-sizedesktop' => '[['  . $dw . ',' . $dh . ']]',
-			'data-sizemobile'  => '[[' . $mw . ',' . $mh . ']]',
+			'data-sizeDesktop' => '[['  . $dw . ',' . $dh . ']]',
+			'data-sizeMobile'  => '[[' . $mw . ',' . $mh . ']]',
 		);
 		if ( ! empty( $lb['sponsor_id'] ) ) {
 			$attrs['data-sponsorid'] = $lb['sponsor_id'];
