@@ -649,4 +649,90 @@ class Equinenetwork_Gam_V2_API {
 			'count'   => count( $items ),
 		);
 	}
+
+	/**
+	 * Diagnostic probe for the line item filter. Reports, step by step, what the GAM API actually
+	 * returns so we can see why filtering is or isn't working — including the literal HTTP response
+	 * for each filter attempt. Surfaced via the "Test Connection" button.
+	 */
+	public function diagnose() {
+		if ( ! $this->is_configured() ) {
+			return array( 'success' => false, 'message' => 'Credentials not configured.' );
+		}
+
+		$token = $this->get_access_token();
+		if ( is_wp_error( $token ) ) {
+			return array( 'success' => false, 'message' => 'OAuth token error: ' . $token->get_error_message() );
+		}
+
+		$network_code = preg_replace( '/[^0-9]/', '', $this->network_code );
+		$base_url     = self::GAM_REST_BASE . '/networks/' . $network_code . '/lineItems';
+		$lines        = array();
+
+		$lines[] = 'Network path: ' . $this->network_code;
+
+		// Step 1: resolve the site's ad unit resource names (force fresh — ignore cache).
+		delete_transient( self::CACHE_SITE_UNITS );
+		$units = $this->get_site_ad_unit_resources( $token );
+		$lines[] = '';
+		$lines[] = '1) Site ad units resolved: ' . count( $units );
+		foreach ( array_slice( $units, 0, 8 ) as $u ) {
+			$lines[] = '   • ' . $u;
+		}
+		if ( empty( $units ) ) {
+			$lines[] = '   ⚠ Could not match the network path\'s last segment to an ad unit code.';
+		}
+
+		// Step 2: probe each candidate filter operator and report the raw HTTP outcome.
+		if ( ! empty( $units ) ) {
+			foreach ( array( '=', ':' ) as $op ) {
+				$clauses = array();
+				foreach ( $units as $r ) {
+					$clauses[] = 'targeting.inventoryTargeting.targetedAdUnits.adUnit ' . $op . ' "' . $r . '"';
+				}
+				$filter = implode( ' OR ', $clauses );
+				$url    = $base_url . '?pageSize=1000&filter=' . rawurlencode( $filter );
+
+				$resp = wp_remote_get( $url, array(
+					'timeout' => 30,
+					'headers' => array( 'Authorization' => 'Bearer ' . $token ),
+				) );
+
+				$lines[] = '';
+				$lines[] = '2) Filter with operator "' . $op . '":';
+				$lines[] = '   ' . $filter;
+				if ( is_wp_error( $resp ) ) {
+					$lines[] = '   → transport error: ' . $resp->get_error_message();
+					continue;
+				}
+				$code = wp_remote_retrieve_response_code( $resp );
+				$body = json_decode( wp_remote_retrieve_body( $resp ), true );
+				if ( $code !== 200 ) {
+					$msg = isset( $body['error']['message'] ) ? $body['error']['message'] : substr( wp_remote_retrieve_body( $resp ), 0, 400 );
+					$lines[] = '   → HTTP ' . $code . ': ' . $msg;
+				} else {
+					$cnt  = isset( $body['lineItems'] ) ? count( $body['lineItems'] ) : 0;
+					$more = isset( $body['nextPageToken'] ) ? ' (+ more pages)' : '';
+					$lines[] = '   → HTTP 200: ' . $cnt . ' line items on first page' . $more;
+				}
+			}
+		}
+
+		// Step 3: confirm what an unfiltered request looks like (first page only).
+		$resp = wp_remote_get( $base_url . '?pageSize=1', array(
+			'timeout' => 30,
+			'headers' => array( 'Authorization' => 'Bearer ' . $token ),
+		) );
+		$lines[] = '';
+		if ( ! is_wp_error( $resp ) && wp_remote_retrieve_response_code( $resp ) === 200 ) {
+			$body  = json_decode( wp_remote_retrieve_body( $resp ), true );
+			$first = isset( $body['lineItems'][0] ) ? $body['lineItems'][0] : array();
+			$lines[] = '3) Sample line item keys returned by list: ' . ( $first ? implode( ', ', array_keys( $first ) ) : '(none)' );
+			$lines[] = '   targeting present in list response: ' . ( isset( $first['targeting'] ) ? 'YES' : 'no' );
+		} else {
+			$lines[] = '3) Unfiltered probe failed.';
+		}
+
+		return array( 'success' => true, 'message' => implode( "\n", $lines ) );
+	}
 }
