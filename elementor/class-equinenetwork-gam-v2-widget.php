@@ -130,6 +130,16 @@ class Equinenetwork_Gam_V2_Widget extends \Elementor\Widget_Base {
 			'default' => 'center',
 		) );
 
+		$this->add_control( 'fluid_width', array(
+			'label'        => 'Fluid Width',
+			'type'         => \Elementor\Controls_Manager::SWITCHER,
+			'label_on'     => 'Fill column',
+			'label_off'    => 'Fixed',
+			'return_value' => 'yes',
+			'default'      => '',
+			'description'  => 'Scale the ad to fill its column width (great for narrow sidebar rails). Leave off for in-content ads — fixed ads still scale DOWN automatically so they never overflow a narrow column.',
+		) );
+
 		$this->add_control( 'is_popup', array(
 			'label'        => 'Popup Ad',
 			'type'         => \Elementor\Controls_Manager::SWITCHER,
@@ -279,6 +289,7 @@ class Equinenetwork_Gam_V2_Widget extends \Elementor\Widget_Base {
 			'preset_key' => $preset_key,
 			'sponsor_id' => $sponsor_id,
 			'align'      => $s['ad_align'],
+			'fluid'      => isset( $s['fluid_width'] ) ? $s['fluid_width'] : '',
 			'is_popup'   => $s['is_popup'],
 			'slot_name'  => $s['slot_name'],
 			'custom_dw'  => $s['custom_desktop_width'],
@@ -356,6 +367,9 @@ class Equinenetwork_Gam_V2_Widget extends \Elementor\Widget_Base {
 
 		if ( $r['is_popup'] === 'yes' ) {
 			$attrs['data-popup'] = 'true';
+		}
+		if ( ! empty( $r['fluid'] ) && $r['fluid'] === 'yes' ) {
+			$attrs['data-fluid'] = '1';
 		}
 		if ( ! empty( $r['sponsor_id'] ) ) {
 			$attrs['data-sponsorid'] = esc_attr( $r['sponsor_id'] );

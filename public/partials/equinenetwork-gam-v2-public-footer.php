@@ -321,17 +321,42 @@ googletag.cmd.push(function() {
 								scaleMasthead();
 								window.addEventListener( 'resize', scaleMasthead );
 							} else if ( !isMasthead ) {
-								filledSlot.style.width    = event.size[0] + 'px';
-								filledSlot.style.maxWidth  = event.size[0] + 'px';
-								filledSlot.style.height   = event.size[1] + 'px';
-								filledSlot.style.maxHeight = event.size[1] + 'px';
-								// Center the sized div in its full-width parent wrapper.
-								// Prevents off-screen displacement when creative width < container.
-								var wrap = filledSlot.closest('.equinenetworkad');
-								if (!wrap || wrap.dataset.align === 'center' || !wrap.dataset.align) {
-									filledSlot.style.display = 'block';
-									filledSlot.style.margin  = '0 auto';
-								}
+								// Fixed-size content ad (medium rectangle, half page, etc).
+								// A 300px-wide creative dropped into a sub-300px column
+								// overflows and "flies off the side" of the layout. Scale
+								// the creative to fit its column using the same transform
+								// technique the masthead uses. By default we only scale
+								// DOWN (never blow a 300x250 up into a blurry billboard in
+								// a wide content column); data-fluid="1" opts a slot into
+								// scaling UP to fill its column too (for sidebar rails).
+								var adW   = event.size[0];
+								var adH   = event.size[1];
+								var sizer = filledSlot.parentNode;          // the <div align="..."> wrapper
+								var wrap  = filledSlot.closest('.equinenetworkad');
+								var align = (wrap && wrap.dataset.align) ? wrap.dataset.align : 'center';
+								var fluid = !!(wrap && wrap.dataset.fluid);
+
+								filledSlot.style.transformOrigin = 'top left';
+								filledSlot.style.width  = adW + 'px';
+								filledSlot.style.height = adH + 'px';
+
+								var scaleContentAd = function() {
+									var avail = wrap ? wrap.clientWidth : adW;
+									if ( avail <= 0 ) avail = adW;
+									var scale = fluid ? ( avail / adW ) : Math.min( 1, avail / adW );
+									filledSlot.style.transform = 'scale(' + scale + ')';
+									if ( sizer ) {
+										// Sizer takes the scaled footprint so the column height
+										// collapses to the visible ad and alignment works.
+										sizer.style.width  = Math.round( adW * scale ) + 'px';
+										sizer.style.height = Math.round( adH * scale ) + 'px';
+										if ( align === 'left' )       sizer.style.margin = '0 auto 0 0';
+										else if ( align === 'right' ) sizer.style.margin = '0 0 0 auto';
+										else                          sizer.style.margin = '0 auto';
+									}
+								};
+								scaleContentAd();
+								window.addEventListener( 'resize', scaleContentAd );
 							}
 							var modal = document.getElementById('adModal');
 							if ( modal && filledSlot.querySelector('iframe') ) modal.style.display = 'block';
