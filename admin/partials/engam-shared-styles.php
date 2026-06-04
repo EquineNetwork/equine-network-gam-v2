@@ -113,5 +113,22 @@
   }
   /* Masthead action buttons stack full width instead of crowding. */
   #engam-v2-wrap .eg-mast-actions .eg-btn{flex:1 1 100%;text-align:center}
+  /* Card-stack table: rows become cards, thead hidden, data-label becomes the field label. */
+  #engam-v2-wrap .eg-table-card thead{display:none}
+  #engam-v2-wrap .eg-table-card,
+  #engam-v2-wrap .eg-table-card tbody,
+  #engam-v2-wrap .eg-table-card tr{display:block}
+  #engam-v2-wrap .eg-table-card tr{padding:16px;border-bottom:3px solid #f0f0ea}
+  #engam-v2-wrap .eg-table-card tr:hover td{background:transparent}
+  #engam-v2-wrap .eg-table-card td{display:block;padding:0;border-bottom:none}
+  #engam-v2-wrap .eg-table-card td+td{margin-top:8px}
+  #engam-v2-wrap .eg-table-card td[data-label]::before{
+    content:attr(data-label);display:block;
+    font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#999;margin-bottom:3px
+  }
+  #engam-v2-wrap .eg-table-card .eg-campaign-name{font-size:16px}
+  #engam-v2-wrap .eg-table-card .eg-actions-cell{flex-wrap:wrap;margin-top:4px}
+  /* Card header: name + badges on same row */
+  #engam-v2-wrap .eg-table-card .egm-top-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px}
 }
 </style>

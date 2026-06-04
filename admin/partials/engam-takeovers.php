@@ -198,6 +198,21 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 }
 .engam-type-card h4 { margin:0 0 6px;font-size:15px; }
 .engam-type-card p  { margin:0;font-size:13px;color:#666;line-height:1.4; }
+/* Desktop: badges inside the name cell are redundant — dedicated Type/Status columns show them */
+#engam-v2-wrap .eg-table-card .egm-top-row .engam-type-badge-masthead,
+#engam-v2-wrap .eg-table-card .egm-top-row .engam-type-badge-wrap,
+#engam-v2-wrap .eg-table-card .egm-top-row .eg-badge { display: none; }
+@media(max-width:900px){
+    /* On mobile, show the inline badges and hide the now-redundant dedicated cells */
+    #engam-v2-wrap .eg-table-card .egm-top-row .engam-type-badge-masthead,
+    #engam-v2-wrap .eg-table-card .egm-top-row .engam-type-badge-wrap,
+    #engam-v2-wrap .eg-table-card .egm-top-row .eg-badge { display: inline-block; }
+    #engam-v2-wrap .eg-table-card td:nth-child(2),
+    #engam-v2-wrap .eg-table-card td:nth-child(4) { display: none; }
+    /* eg-head stacks on mobile so the Add New button doesn't crowd the title */
+    #engam-v2-wrap .eg-head { flex-wrap: wrap; gap: 12px; }
+    #engam-v2-wrap .eg-head #engam-to-add-btn { width: 100%; text-align: center; }
+}
 </style>
 <div id="engam-v2-wrap">
 
@@ -237,7 +252,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
             Click "+ Add New" above to create a Masthead or Wrap Takeover.
         </div>
     <?php else : ?>
-        <table class="eg-table">
+        <table class="eg-table eg-table-card">
             <thead>
                 <tr>
                     <th>Name</th>
@@ -268,19 +283,27 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 ?>
                 <tr>
                     <td>
-                        <div class="eg-campaign-name"><?php echo esc_html( $to['name'] ); ?></div>
+                        <div class="egm-top-row">
+                            <div class="eg-campaign-name"><?php echo esc_html( $to['name'] ); ?></div>
+                            <?php if ( 'masthead' === $to_type ) : ?>
+                                <span class="engam-type-badge-masthead">Masthead</span>
+                            <?php else : ?>
+                                <span class="engam-type-badge-wrap">Wrap</span>
+                            <?php endif; ?>
+                            <span class="eg-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $badge_label ); ?></span>
+                        </div>
                         <div class="eg-campaign-id" style="margin-top:2px"><?php echo esc_html( $to['id'] ); ?></div>
                     </td>
-                    <td>
+                    <td data-label="Type">
                         <?php if ( 'masthead' === $to_type ) : ?>
                             <span class="engam-type-badge-masthead">Masthead</span>
                         <?php else : ?>
                             <span class="engam-type-badge-wrap">Wrap Takeover</span>
                         <?php endif; ?>
                     </td>
-                    <td style="font-size:12px;color:#555"><?php echo esc_html( $start_fmt ); ?> &rarr; <?php echo esc_html( $end_fmt ); ?></td>
-                    <td><span class="eg-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $badge_label ); ?></span></td>
-                    <td>
+                    <td data-label="Schedule" style="font-size:12px;color:#555"><?php echo esc_html( $start_fmt ); ?> &rarr; <?php echo esc_html( $end_fmt ); ?></td>
+                    <td data-label="Status"><span class="eg-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $badge_label ); ?></span></td>
+                    <td data-label="GAM">
                         <?php if ( $gam_li_key && $engam_list_net ) : ?>
                         <a href="https://admanager.google.com/<?php echo esc_attr( $engam_list_net ); ?>#delivery/line_item/detail/line_item_id=<?php echo rawurlencode( $gam_li_key ); ?>"
                            target="_blank" rel="noopener" class="eg-btn sm" style="background:#d0ff00;color:#111;border-color:#d0ff00">View in GAM ↗</a>
