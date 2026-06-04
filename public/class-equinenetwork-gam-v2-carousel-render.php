@@ -293,7 +293,8 @@ class Equinenetwork_Gam_V2_Carousel_Render {
 		#<?php echo esc_attr( $uid ); ?> .engam-car-track{display:flex;gap:<?php echo (int) $gap; ?>px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;padding:4px;scrollbar-width:none}
 		#<?php echo esc_attr( $uid ); ?> .engam-car-track::-webkit-scrollbar{display:none}
 		#<?php echo esc_attr( $uid ); ?> .engam-car-slide{flex:0 0 calc((100% - <?php echo ( $sd - 1 ) * $gap; ?>px) / <?php echo $sd; ?>);scroll-snap-align:start;box-sizing:border-box}
-		@media(max-width:767px){#<?php echo esc_attr( $uid ); ?> .engam-car-slide{flex:0 0 calc((100% - <?php echo ( $sm - 1 ) * $gap; ?>px) / <?php echo $sm; ?>)}}
+		@media(max-width:767px){#<?php echo esc_attr( $uid ); ?> .engam-car-slide{flex:0 0 calc((100% - <?php echo ( $sm - 1 ) * $gap; ?>px) / <?php echo $sm; ?>);scroll-snap-align:center;scroll-snap-stop:always}}
+		@media(max-width:767px){#<?php echo esc_attr( $uid ); ?> .engam-car-track{scroll-padding-inline:0}}
 		#<?php echo esc_attr( $uid ); ?> .engam-car-slide.engam-car-ad:has(.equinenetworkad.engam-empty){display:none}
 		#<?php echo esc_attr( $uid ); ?> .engam-car-arrow{position:absolute;top:50%;transform:translateY(-50%);z-index:5;width:44px;height:44px;border-radius:999px;border:none;background:<?php echo esc_attr( $arrow_bg ); ?>;color:<?php echo esc_attr( $arrow_color ); ?>;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:.9}
 		#<?php echo esc_attr( $uid ); ?> .engam-car-arrow:hover{opacity:1}
@@ -328,10 +329,21 @@ class Equinenetwork_Gam_V2_Carousel_Render {
 			var root=document.getElementById("<?php echo esc_js( $uid ); ?>");
 			if(!root)return;
 			var track=root.querySelector(".engam-car-track");
-			function step(){var slide=track.querySelector(".engam-car-slide");return slide?slide.offsetWidth+<?php echo (int) $gap; ?>:300;}
+			var gap=<?php echo (int) $gap; ?>;
+			function step(){var slide=track.querySelector(".engam-car-slide");return slide?slide.offsetWidth+gap:300;}
 			var prev=root.querySelector(".engam-car-prev"),next=root.querySelector(".engam-car-next");
-			if(prev)prev.addEventListener("click",function(){track.scrollBy({left:-step(),behavior:"smooth"});});
-			if(next)next.addEventListener("click",function(){track.scrollBy({left:step(),behavior:"smooth"});});
+			function updateArrows(){
+				var atStart=track.scrollLeft<=4;
+				var atEnd=track.scrollLeft+track.clientWidth>=track.scrollWidth-4;
+				if(prev)prev.style.display=atStart?"none":"";
+				if(next)next.style.display=atEnd?"none":"";
+			}
+			if(prev)prev.addEventListener("click",function(){track.scrollBy({left:-step(),behavior:"smooth"});setTimeout(updateArrows,350);});
+			if(next)next.addEventListener("click",function(){track.scrollBy({left:step(),behavior:"smooth"});setTimeout(updateArrows,350);});
+			track.addEventListener("scroll",updateArrows,{passive:true});
+			// Re-run after images/ads finish loading — they change scrollWidth.
+			window.addEventListener("load",updateArrows);
+			updateArrows();
 		})();
 		</script>
 		<?php

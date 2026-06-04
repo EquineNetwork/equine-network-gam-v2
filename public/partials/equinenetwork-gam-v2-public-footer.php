@@ -318,6 +318,13 @@ googletag.cmd.push(function() {
 								filledSlot.style.maxWidth  = event.size[0] + 'px';
 								filledSlot.style.height   = event.size[1] + 'px';
 								filledSlot.style.maxHeight = event.size[1] + 'px';
+								// Center the sized div in its full-width parent wrapper.
+								// Prevents off-screen displacement when creative width < container.
+								var wrap = filledSlot.closest('.equinenetworkad');
+								if (!wrap || wrap.dataset.align === 'center' || !wrap.dataset.align) {
+									filledSlot.style.display = 'block';
+									filledSlot.style.margin  = '0 auto';
+								}
 							}
 							var modal = document.getElementById('adModal');
 							if ( modal && filledSlot.querySelector('iframe') ) modal.style.display = 'block';
