@@ -246,6 +246,7 @@ actually returning.
 | 3.3.52 | Sponsor dropdowns show "Name - Sponsorship ID" (e.g. `Bimeda - videotips_hr_bimeda`) so duplicate advertiser names are distinguishable |
 | 3.3.53 | Worksheet/Tab Name gains `engam_v2_ms_tabs` AJAX endpoint + `list_worksheet_names()` to fetch real tab names from the file; first UI used `<datalist>` (superseded by v3.3.54) |
 | 3.3.54 | Tab picker: `<datalist>` → real `<select>` + hidden input (datalist only shows suggestions matching the current typed value — not a true dropdown); version bump to deliver the fix via the update checker |
+| 3.3.55 | **Leaderboard size-mapping fix**: `validSizes()` now normalizes a single `[w,h]` pair, so the Elementor widget's leaderboard slot builds a viewport size map and GAM can't serve a 320x50 creative on desktop (see §8) |
 
 ---
 
@@ -366,3 +367,53 @@ syncs the selection into the hidden input. The text fallback syncs via
 `fillTabs()` checks whether the option stored in `engam_v2_ms_sheet_name` is present in the
 fetched tab array. If not (tab was renamed in Excel), it inserts the saved value as the first
 selected option so it isn't silently discarded on the next Save.
+
+---
+
+## 8. Ad slot sizes & the viewport size mapping (don't reintroduce the 320x50-on-desktop bug)
+
+Every ad slot is a `<div class="equinenetworkad" data-sizeDesktop=… data-sizeMobile=…
+data-sizes=…>` consumed by the loop in
+`public/partials/equinenetwork-gam-v2-public-footer.php`. For a slot that has different
+desktop and mobile sizes (the **leaderboard**: 728x90 desktop / 320x50 mobile), GPT needs a
+**viewport size mapping** or GAM may serve *any* size in the slot's size array at *any*
+width — e.g. a 320x50 creative dropped into a 728x90 desktop leaderboard.
+
+### The mapping
+Built per slot in the footer, keyed off `data-sizeDesktop` / `data-sizeMobile`:
+```js
+googletag.sizeMapping()
+    .addSize([728, 0], validDsk)   // viewport ≥ 728px wide → desktop sizes
+    .addSize([0,   0], validMob)   // narrower → mobile sizes
+    .build();
+```
+It is applied with `gamSlot.defineSizeMapping(mapping)` **only when both `validDsk` and
+`validMob` are non-null.** `data-sizes` (the union of all sizes) is still what
+`defineSlot()` is called with; the mapping just restricts eligibility per viewport.
+
+### The trap: two emitters, two array shapes
+There are two places that emit these attributes, and they historically used **different
+shapes**:
+
+| Emitter | `data-sizeDesktop` shape |
+|---|---|
+| `public/class-equinenetwork-gam-v2-leaderboard.php` (standalone leaderboard band) | `[[728,90]]` — **array of pairs** ✅ |
+| `elementor/class-equinenetwork-gam-v2-widget.php` (EN Ad Slot widget) | `[728,90]` — **single pair** ⚠️ |
+| `public/class-equinenetwork-gam-v2-public.php` (stacker) | `[320,480]` — **single pair** ⚠️ |
+
+`validSizes()` originally filtered for **array** elements only, so a single pair like
+`[728,90]` (whose elements are numbers) filtered down to empty → returned `null` →
+`if (validDsk && validMob)` was false → **the size mapping was silently never built** for the
+widget. The widget's leaderboard therefore had no desktop/mobile restriction, and GAM could
+serve 320x50 on desktop. The standalone leaderboard band was unaffected because it already
+wrapped its sizes as `[[…]]`.
+
+### The fix (v3.3.55)
+`validSizes()` normalizes a single pair into an array of pairs before filtering:
+```js
+if (typeof arr[0] === 'number') arr = [arr];   // [728,90] → [[728,90]]
+```
+This is the central choke point all slots pass through, so it fixes the widget leaderboard
+**and** the stacker, and is backward-compatible with the already-correct `[[…]]` shape (e.g.
+`med_half`, takeover). When touching ad sizes, keep `validSizes()` tolerant of both shapes
+rather than forcing every emitter to agree.

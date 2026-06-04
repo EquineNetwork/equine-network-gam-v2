@@ -85,9 +85,17 @@ var registeredDivIDs = {};
 window.googletag = window.googletag || {cmd: []};
 googletag.cmd.push(function() {
 
-	// Filter out zero-area sizes from a size array.
+	// Normalize to an array of valid [w,h] size pairs, dropping zero-area sizes.
+	// Accepts either a single pair ([728,90]) or an array of pairs
+	// ([[320,50],[728,90]]). The Elementor widget and the stacker emit
+	// sizeDesktop/sizeMobile as single pairs; without this normalization they
+	// failed the Array.isArray(s) test, validSizes returned null, and the size
+	// mapping below was silently skipped — so GAM could serve a 320x50 creative
+	// into a 728x90 desktop leaderboard.
 	function validSizes(arr) {
-		if (!Array.isArray(arr)) return null;
+		if (!Array.isArray(arr) || arr.length === 0) return null;
+		// A single pair like [728, 90] → wrap as [[728, 90]].
+		if (typeof arr[0] === 'number') arr = [arr];
 		var filtered = arr.filter(function(s) {
 			return Array.isArray(s) ? (s[0] > 0 && s[1] > 0) : false;
 		});
