@@ -36,6 +36,13 @@
 #engam-v2-wrap .eg-head p{margin:4px 0 0;color:#777;font-size:13px}
 #engam-v2-wrap .eg-card.black .eg-head p{color:#bdbdb8}
 #engam-v2-wrap .eg-tag{height:24px;display:inline-flex;align-items:center;background:#d0ff00;color:#111;padding:0 10px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;flex-shrink:0}
+/* Compact placement metric card — no dangling header border, optional footer button. */
+#engam-v2-wrap .eg-metric{display:flex;flex-direction:column;height:100%}
+#engam-v2-wrap a.eg-metric,#engam-v2-wrap a > .eg-metric{transition:border-color .12s ease}
+#engam-v2-wrap a:hover .eg-metric{border-color:#050505}
+#engam-v2-wrap .eg-metric-top{padding:18px 24px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+#engam-v2-wrap .eg-metric-top h2{font-size:20px;text-transform:uppercase;letter-spacing:-1px;margin:0;line-height:1.1}
+#engam-v2-wrap .eg-metric-foot{padding:0 24px 18px;margin-top:auto}
 #engam-v2-wrap .eg-body{padding:24px}
 #engam-v2-wrap .eg-notice{padding:12px 18px;margin-bottom:18px;font-weight:700;font-size:13px;background:#d0ff00;color:#111;border-left:6px solid #050505}
 #engam-v2-wrap .eg-add-form{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;padding:18px 24px;background:#f5f5f2;border-bottom:1px solid #deded8}

@@ -78,6 +78,13 @@ if ( $hide_ids_raw !== '' ) {
     }
 }
 
+$stacker_slot = $gam_netid ? rtrim( $gam_netid, '/' ) . '/stacker' : '/networkId/stacker';
+
+// Read-only "ai_category" taxonomy from GAM (cached 12h inside the API class).
+require_once EQUINENETWORK_GAM_V2_PATH . 'includes/class-equinenetwork-gam-v2-api.php';
+$engam_api     = new Equinenetwork_Gam_V2_API();
+$ai_categories = $engam_api->get_ai_category_values();
+
 include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 ?>
 <div id="engam-v2-wrap">
@@ -101,25 +108,32 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 <div class="eg-notice"><?php echo esc_html( $notice ); ?></div>
 <?php endif; ?>
 
-<!-- STACKER OVERVIEW -->
-<div class="eg-card" style="margin-top:18px;margin-bottom:18px">
-    <div class="eg-head">
-        <div>
-            <h2>Stackers</h2>
-            <p>Stackers are created and managed entirely in GAM. The plugin injects the <code><?php echo esc_html( $gam_netid ? rtrim( $gam_netid, '/' ) . '/stacker' : '/networkId/stacker' ); ?></code> 320&times;480 slot into posts, and GAM serves the right creative based on its own targeting (AI category). Use the settings below to control where the slot is placed and where it should be hidden.</p>
-        </div>
-    </div>
-    <div class="eg-accentline"></div>
-</div>
-
-<!-- STACKER PLACEMENT & VISIBILITY — single site-wide injection config -->
+<!-- STACKERS — single consolidated card -->
 <div class="eg-card" style="margin-top:18px">
     <div class="eg-head">
         <div>
-            <h2>Placement &amp; Visibility</h2>
-            <p>Controls where the plugin injects the <code><?php echo esc_html( $gam_netid ? rtrim( $gam_netid, '/' ) . '/stacker' : '/networkId/stacker' ); ?></code> 320&times;480 slot. GAM decides which creative serves; these rules decide where the slot appears on the site.</p>
+            <h2>Stackers</h2>
+            <p>Stackers are created and managed in GAM — the plugin injects the <code><?php echo esc_html( $stacker_slot ); ?></code> 320&times;480 slot into posts and GAM serves the right creative by its own AI-category targeting. Use the settings below to control where the slot is placed and where it should be hidden.</p>
         </div>
     </div>
+
+    <!-- AI CATEGORIES — read-only, pulled live from GAM -->
+    <div class="eg-form-section">
+        <h3>AI Categories Targeted in GAM</h3>
+        <?php if ( is_wp_error( $ai_categories ) ) : ?>
+            <p class="eg-hint" style="margin-top:0">Couldn&rsquo;t load categories from GAM: <?php echo esc_html( $ai_categories->get_error_message() ); ?></p>
+        <?php elseif ( empty( $ai_categories ) ) : ?>
+            <p class="eg-hint" style="margin-top:0">No <code>ai_category</code> values are defined in GAM yet — they&rsquo;ll appear here automatically once they exist.</p>
+        <?php else : ?>
+            <p class="eg-hint" style="margin:0 0 12px">Read-only — the <code>ai_category</code> values defined in GAM that stacker creatives target against. Managed in GAM; shown here for reference (<?php echo count( $ai_categories ); ?> total).</p>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <?php foreach ( $ai_categories as $cat ) : ?>
+                <span style="display:inline-block;padding:5px 11px;background:#f0f0ec;border:1px solid #deded8;font-size:12px;font-weight:700;color:#111"><?php echo esc_html( $cat ); ?></span>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+
     <form method="post" action="">
         <?php wp_nonce_field( 'engam_v2_stacker_save', 'engam_v2_stacker_nonce' ); ?>
         <input type="hidden" name="engam_stacker_action" value="save_settings">

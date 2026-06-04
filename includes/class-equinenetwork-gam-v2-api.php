@@ -14,6 +14,7 @@ class Equinenetwork_Gam_V2_API {
 	const CACHE_SITE_UNITS = 'engam_v2_site_unit_res'; // stores ad unit resource names
 	const REPORT_NAME      = 'EN Plugin — Line Items by Ad Unit (auto)';
 	const REPORT_RANGE     = 'LAST_90_DAYS'; // window used to detect line items running on the site
+	const CACHE_AI_CATS    = 'engam_v2_ai_category_values'; // read-only ai_category targeting taxonomy from GAM
 
 	private $credentials;
 	private $network_code;
@@ -66,6 +67,93 @@ class Equinenetwork_Gam_V2_API {
 		}
 
 		return $this->fetch_line_items( $token );
+	}
+
+	/**
+	 * Returns the read-only list of "ai_category" custom-targeting values defined in GAM — the
+	 * taxonomy the stacker (and other) line items target against. GAM's v1 API does not expose a
+	 * line item's own targeting, so this is the category universe, not a per-line-item list.
+	 * Cached for 12 hours. Returns an array of category labels, or a WP_Error on failure.
+	 */
+	public function get_ai_category_values( $force_refresh = false ) {
+		if ( ! $this->is_configured() ) {
+			return new WP_Error( 'not_configured', 'GAM API credentials not configured.' );
+		}
+
+		if ( ! $force_refresh ) {
+			$cached = get_transient( self::CACHE_AI_CATS );
+			if ( is_array( $cached ) ) {
+				return $cached;
+			}
+		}
+
+		$token = $this->get_access_token();
+		if ( is_wp_error( $token ) ) {
+			return $token;
+		}
+
+		$network_code = preg_replace( '/[^0-9]/', '', $this->network_code );
+		$net_base     = self::GAM_REST_BASE . '/networks/' . $network_code;
+
+		// 1) Find the "ai_category" key by scanning all custom targeting keys (avoids filter-syntax pitfalls).
+		$key_name   = '';
+		$page_token = null;
+		do {
+			$url = $net_base . '/customTargetingKeys?pageSize=1000';
+			if ( $page_token ) {
+				$url .= '&pageToken=' . rawurlencode( $page_token );
+			}
+			$kbody = $this->gam_json_request( 'GET', $url, $token );
+			if ( is_wp_error( $kbody ) ) {
+				return $kbody;
+			}
+			if ( ! empty( $kbody['customTargetingKeys'] ) ) {
+				foreach ( $kbody['customTargetingKeys'] as $k ) {
+					if ( isset( $k['adTagName'], $k['name'] ) && strcasecmp( $k['adTagName'], 'ai_category' ) === 0 ) {
+						$key_name = $k['name'];
+						break 2;
+					}
+				}
+			}
+			$page_token = isset( $kbody['nextPageToken'] ) ? $kbody['nextPageToken'] : null;
+		} while ( $page_token );
+
+		if ( $key_name === '' ) {
+			// No such key — cache an empty result briefly so we don't re-scan on every page load.
+			set_transient( self::CACHE_AI_CATS, array(), HOUR_IN_SECONDS );
+			return array();
+		}
+
+		// 2) List that key's values (nested collection, paginated).
+		$values     = array();
+		$page_token = null;
+		do {
+			$url = self::GAM_REST_BASE . '/' . $key_name . '/customTargetingValues?pageSize=1000';
+			if ( $page_token ) {
+				$url .= '&pageToken=' . rawurlencode( $page_token );
+			}
+			$vbody = $this->gam_json_request( 'GET', $url, $token );
+			if ( is_wp_error( $vbody ) ) {
+				return $vbody;
+			}
+			if ( ! empty( $vbody['customTargetingValues'] ) ) {
+				foreach ( $vbody['customTargetingValues'] as $v ) {
+					if ( isset( $v['displayName'] ) && $v['displayName'] !== '' ) {
+						$values[] = $v['displayName'];
+					} elseif ( isset( $v['adTagName'] ) && $v['adTagName'] !== '' ) {
+						$values[] = $v['adTagName'];
+					}
+				}
+			}
+			$page_token = isset( $vbody['nextPageToken'] ) ? $vbody['nextPageToken'] : null;
+		} while ( $page_token );
+
+		$values = array_values( array_unique( $values ) );
+		natcasesort( $values );
+		$values = array_values( $values );
+
+		set_transient( self::CACHE_AI_CATS, $values, 12 * HOUR_IN_SECONDS );
+		return $values;
 	}
 
 	/**
