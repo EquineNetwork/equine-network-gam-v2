@@ -251,12 +251,18 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         <p class="eg-hint">In Excel/SharePoint click <strong>Share &rarr; Copy link</strong>. Make sure it reads <strong>&ldquo;Anyone with the link&rdquo;</strong>, then paste it here. (View-only is fine &mdash; the plugin only reads.)</p>
                     </div>
 
-                    <div class="eg-settings-field" style="margin-bottom:16px;max-width:260px">
-                        <label for="engam-ms-sheet">Worksheet / Tab Name</label>
+                    <div class="eg-settings-field" style="margin-bottom:16px;max-width:320px">
+                        <label for="engam-ms-sheet" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                            <span>Worksheet / Tab Name</span>
+                            <button type="button" id="engam-ms-tabs-refresh"
+                                style="display:none;border:none;background:none;padding:0;cursor:pointer;font-size:11px;font-weight:700;color:#555;text-transform:none;letter-spacing:0">&#8635; Refresh list</button>
+                        </label>
                         <input class="eg-input" type="text" name="engam_v2_ms_sheet_name" id="engam-ms-sheet"
+                            list="engam-ms-tablist" autocomplete="off"
                             value="<?php echo esc_attr( $ms_sheet ); ?>"
                             placeholder="HR">
-                        <p class="eg-hint">The tab name exactly as it appears in Excel (e.g. <code>HR</code>). Case-sensitive.</p>
+                        <datalist id="engam-ms-tablist"></datalist>
+                        <p class="eg-hint">Start typing to search your tabs, or pick one from the list. Matches the tab name exactly as it appears in Excel (case-sensitive).</p>
                     </div>
 
                     <!-- Advanced: Azure (only needed when the file is NOT shared via "Anyone with the link") -->
@@ -379,6 +385,40 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         el.textContent      = data.data || (data.success ? 'OK' : 'Error');
     }
 
+    // ── Worksheet/tab picker (searchable combobox via <datalist>) ───────
+    var tabInput   = document.getElementById('engam-ms-sheet');
+    var tabList    = document.getElementById('engam-ms-tablist');
+    var tabRefresh = document.getElementById('engam-ms-tabs-refresh');
+    var msFileUrl  = document.getElementById('engam-ms-file-url');
+
+    function fillTabs(tabs) {
+        if (!tabList) return;
+        tabList.innerHTML = '';
+        (tabs || []).forEach(function(name){
+            var opt = document.createElement('option');
+            opt.value = name;
+            tabList.appendChild(opt);
+        });
+        if (tabInput) tabInput.placeholder = (tabs && tabs.length) ? 'Pick a tab or type a name' : 'HR';
+        if (tabRefresh) tabRefresh.style.display = (tabs && tabs.length) ? '' : 'none';
+    }
+
+    function loadTabs(force) {
+        if (!tabInput || !tabList) return;
+        // Need a saved file URL for the server-side lookup to have anything to read.
+        if (msFileUrl && !msFileUrl.value.trim()) return;
+        if (tabRefresh) tabRefresh.textContent = '↻ Loading…';
+        ajaxPost('engam_v2_ms_tabs', force ? '&force=1' : '', function(data){
+            if (tabRefresh) tabRefresh.textContent = '↻ Refresh list';
+            if (data && data.success && data.data && data.data.tabs && data.data.tabs.length) {
+                fillTabs(data.data.tabs);
+            }
+            // On failure, leave the field as free text — Test Connection surfaces why.
+        });
+    }
+
+    if (tabRefresh) tabRefresh.addEventListener('click', function(){ loadTabs(true); });
+
     // ── MS Graph test button ───────────────────────────────────────────
     var msTestBtn = document.getElementById('engam-ms-test-btn');
     if (msTestBtn) {
@@ -388,9 +428,16 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
             ajaxPost('engam_v2_test_ms', '', function(data){
                 showStatus('engam-ms-status', data);
                 msTestBtn.disabled = false; msTestBtn.textContent = 'Test Connection';
+                // Test Connection re-reads the file, so refresh the tab list too.
+                if (data && data.success) loadTabs(true);
             });
         });
     }
+
+    // Populate the tab list on load when SharePoint is the active source.
+    <?php if ( $ms_active ) : ?>
+    loadTabs(false);
+    <?php endif; ?>
 
     // ── CSV test button ────────────────────────────────────────────────
     var testBtn = document.getElementById('engam-sheets-test-btn');
