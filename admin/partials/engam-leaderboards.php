@@ -152,7 +152,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     if ( $pos_val === 'footer' ) {
                         $pos_label = 'Footer';
                     } elseif ( $pos_val === 'midpoint' ) {
-                        $pos_label = 'Mid-content';
+                        $pos_label = 'Half Page';
                         if ( ! empty( $lb['target_pages'] ) ) {
                             $pos_label .= ' (' . esc_html( $lb['target_pages'] ) . ')';
                         }
@@ -230,13 +230,13 @@ if ( $edit_id ) :
                     <select class="eg-input" name="engam_lb_position" id="engam-lb-position">
                         <option value="header" <?php selected( $f['position'] ?? 'header', 'header' ); ?>>Header — below the site nav</option>
                         <option value="footer" <?php selected( $f['position'] ?? 'header', 'footer' ); ?>>Footer — top of the site footer</option>
-                        <option value="midpoint" <?php selected( $f['position'] ?? 'header', 'midpoint' ); ?>>Mid-content — halfway down a specific page</option>
+                        <option value="midpoint" <?php selected( $f['position'] ?? 'header', 'midpoint' ); ?>>Half Page — halfway down a specific page</option>
                     </select>
-                    <p class="eg-hint">Header/Footer show on every page. Mid-content shows only on the page(s) you choose below.</p>
+                    <p class="eg-hint">Header/Footer show on every page. Half Page shows only on the page(s) you choose below.</p>
                 </div>
             </div>
 
-            <!-- MID-CONTENT TARGETING (only relevant for the Mid-content position) -->
+            <!-- HALF PAGE TARGETING (only relevant for the Half Page position) -->
             <div id="engam-lb-midpoint-fields" style="margin-top:18px;<?php echo ( ( $f['position'] ?? 'header' ) === 'midpoint' ) ? '' : 'display:none'; ?>">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
                     <div class="eg-settings-field">
