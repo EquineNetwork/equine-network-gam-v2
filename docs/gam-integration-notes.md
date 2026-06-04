@@ -240,6 +240,7 @@ actually returning.
 | 3.3.49 | "View in GAM" column added to Carousels + Takeovers lists |
 | 3.3.50 | Sponsor sheet: Microsoft Graph (Azure app) OneDrive/SharePoint path |
 | 3.3.51 | Sponsor sheet: no‑Azure "Anyone with the link" path (download + XLSX parse) |
+| 3.3.52 | Sponsor dropdowns show "Name — ID" so duplicate advertiser names are distinguishable |
 
 ---
 

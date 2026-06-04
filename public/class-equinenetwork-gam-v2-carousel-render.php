@@ -103,7 +103,10 @@ class Equinenetwork_Gam_V2_Carousel_Render {
 		$sheet_rows   = $api->get_sponsor_options();
 		if ( ! empty( $sheet_rows ) ) {
 			foreach ( $sheet_rows as $row ) {
-				$options[ $row['id'] ] = $row['name'];
+				// Show "Name — ID" so duplicate advertiser names stay distinguishable.
+				$options[ $row['id'] ] = ( $row['name'] === $row['id'] )
+					? $row['id']
+					: $row['name'] . ' — ' . $row['id'];
 			}
 			return $options;
 		}
