@@ -215,7 +215,12 @@ class Equinenetwork_Gam_V2_API {
 		$page_token       = null;
 
 		do {
-			$params = array( 'pageSize' => 1000 );
+			$params = array(
+				'pageSize' => 1000,
+				// Explicitly request the targeting field — list endpoints often omit heavy nested
+				// objects unless asked for via the fields partial-response parameter.
+				'fields'   => 'lineItems(name,displayName,externalId,entityStatus,startTime,endTime,targeting),nextPageToken',
+			);
 			if ( $page_token ) {
 				$params['pageToken'] = $page_token;
 			}
@@ -268,9 +273,13 @@ class Equinenetwork_Gam_V2_API {
 
 				$all_items[] = $item;
 
+				// Mark that the API is returning targeting data (even if this item targets all inventory).
+				if ( isset( $li['targeting'] ) ) {
+					$saw_targeting = true;
+				}
+
 				// Determine whether this line item targets the site's ad unit(s).
 				if ( ! empty( $site_ad_unit_ids ) && ! empty( $li['targeting']['inventoryTargeting']['targetedAdUnits'] ) ) {
-					$saw_targeting = true;
 					foreach ( $li['targeting']['inventoryTargeting']['targetedAdUnits'] as $t ) {
 						// v1 REST uses the resource name "adUnit" (…/adUnits/ID); legacy uses numeric "adUnitId".
 						$tid = '';
