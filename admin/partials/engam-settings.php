@@ -50,8 +50,10 @@ $ms_secret_set = ! empty( get_option( 'engam_v2_ms_client_secret', '' ) );
 $ms_file_url   = get_option( 'engam_v2_ms_file_url', '' );
 $ms_sheet      = get_option( 'engam_v2_ms_sheet_name', 'HR' );
 $ms_configured = $ms_tenant && $ms_client && $ms_secret_set && $ms_file_url;
+$ms_link_only  = ! $ms_configured && $ms_file_url;     // share-link path (no Azure)
+$ms_active     = $ms_configured || $ms_link_only;
 // Default source: show MS if already configured, else CSV if CSV url exists, else MS (new setup).
-$sponsor_source = $ms_configured ? 'ms' : ( $sheets_configured ? 'csv' : 'ms' );
+$sponsor_source = $ms_active ? 'ms' : ( $sheets_configured ? 'csv' : 'ms' );
 
 include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 ?>
@@ -200,8 +202,8 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 <h2>Sponsor Spreadsheet</h2>
                 <p>Connect your sponsorship ID sheet to populate the "Lock to Sponsor" dropdowns and the Carousels list.</p>
             </div>
-            <span class="eg-tag" style="<?php echo ( $ms_configured || $sheets_configured ) ? '' : 'background:#111;color:#d0ff00;'; ?>">
-                <?php echo $ms_configured ? 'SharePoint' : ( $sheets_configured ? 'CSV' : 'Setup' ); ?>
+            <span class="eg-tag" style="<?php echo ( $ms_active || $sheets_configured ) ? '' : 'background:#111;color:#d0ff00;'; ?>">
+                <?php echo $ms_active ? 'SharePoint' : ( $sheets_configured ? 'CSV' : 'Setup' ); ?>
             </span>
         </div>
         <div class="eg-body">
@@ -226,71 +228,77 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     <?php wp_nonce_field( 'engam_v2_settings_save', 'engam_v2_settings_nonce' ); ?>
                     <input type="hidden" name="engam_form" value="ms_sponsor">
 
-                    <?php if ( $ms_configured ) : ?>
+                    <?php if ( $ms_active ) : ?>
                     <div style="background:#f7f7f4;border:1px solid #deded8;border-left:4px solid #050505;padding:12px 14px;margin-bottom:18px;display:flex;align-items:flex-start;gap:10px">
                         <span style="flex-shrink:0;width:30px;height:30px;background:#050505;display:inline-flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#d0ff00" stroke-width="3" stroke-linecap="square"/></svg></span>
                         <div>
-                            <strong style="font-size:13px;display:block;margin-bottom:2px">Connected to SharePoint</strong>
+                            <strong style="font-size:13px;display:block;margin-bottom:2px"><?php echo $ms_configured ? 'Connected via Microsoft Graph' : 'Connected via share link'; ?></strong>
                             <span style="font-size:12px;color:#555;word-break:break-all"><?php echo esc_html( $ms_file_url ); ?></span><br>
                             <span style="font-size:11px;color:#888">Tab: <?php echo esc_html( $ms_sheet ); ?></span>
                         </div>
                     </div>
                     <?php endif; ?>
 
-                    <!-- Step-by-step Azure setup guide -->
-                    <details style="margin-bottom:18px;border:1px solid #deded8;border-radius:6px;overflow:hidden" <?php echo $ms_configured ? '' : 'open'; ?>>
-                        <summary style="padding:10px 14px;cursor:pointer;font-weight:700;font-size:13px;background:#f7f7f4;list-style:none;display:flex;justify-content:space-between;align-items:center">
-                            Azure App Registration — one-time setup
-                            <span style="font-size:11px;font-weight:400;color:#888">Required for private SharePoint files</span>
-                        </summary>
-                        <div style="padding:14px;font-size:13px;line-height:1.6;color:#333">
-                            <ol style="margin:0 0 0 18px;padding:0">
-                                <li>Go to <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener" style="font-weight:700">portal.azure.com &rarr; Entra ID &rarr; App registrations</a> &rarr; <strong>New registration</strong>. Name it anything (e.g. <em>EquineNetwork GAM Plugin</em>). Leave the redirect URI blank. Click <strong>Register</strong>.</li>
-                                <li>From the app&rsquo;s Overview page, copy the <strong>Directory (tenant) ID</strong> and <strong>Application (client) ID</strong> into the fields below.</li>
-                                <li>Go to <strong>API permissions &rarr; Add a permission &rarr; Microsoft Graph &rarr; Application permissions</strong>. Add <code>Files.Read.All</code>. Then click <strong>Grant admin consent</strong>.</li>
-                                <li>Go to <strong>Certificates &amp; secrets &rarr; New client secret</strong>. Copy the <strong>Value</strong> (not the ID) — it only shows once.</li>
-                            </ol>
-                        </div>
-                    </details>
+                    <p class="eg-hint" style="margin:0 0 14px">
+                        If your sheet is shared with <strong>&ldquo;Anyone with the link&rdquo;</strong>, just paste that link and the tab name below &mdash; no Azure setup needed.
+                    </p>
 
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-                        <div class="eg-settings-field">
-                            <label for="engam-ms-tenant">Directory (Tenant) ID</label>
-                            <input class="eg-input" type="text" name="engam_v2_ms_tenant_id" id="engam-ms-tenant"
-                                value="<?php echo esc_attr( $ms_tenant ); ?>"
-                                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-                        </div>
-                        <div class="eg-settings-field">
-                            <label for="engam-ms-client">Application (Client) ID</label>
-                            <input class="eg-input" type="text" name="engam_v2_ms_client_id" id="engam-ms-client"
-                                value="<?php echo esc_attr( $ms_client ); ?>"
-                                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-                        </div>
-                        <div class="eg-settings-field">
-                            <label for="engam-ms-secret">Client Secret Value</label>
-                            <input class="eg-input" type="password" name="engam_v2_ms_client_secret" id="engam-ms-secret"
-                                value=""
-                                placeholder="<?php echo $ms_secret_set ? '(saved — leave blank to keep)' : 'Paste secret value here'; ?>"
-                                autocomplete="new-password">
-                            <?php if ( $ms_secret_set ) : ?>
-                            <p class="eg-hint" style="margin-top:4px">A secret is saved. Leave blank to keep the existing one, or paste a new value to replace it.</p>
-                            <?php endif; ?>
-                        </div>
-                        <div class="eg-settings-field">
-                            <label for="engam-ms-sheet">Worksheet / Tab Name</label>
-                            <input class="eg-input" type="text" name="engam_v2_ms_sheet_name" id="engam-ms-sheet"
-                                value="<?php echo esc_attr( $ms_sheet ); ?>"
-                                placeholder="HR">
-                            <p class="eg-hint">The tab name exactly as it appears in Excel (case-sensitive).</p>
-                        </div>
-                    </div>
-                    <div class="eg-settings-field" style="margin-bottom:18px">
-                        <label for="engam-ms-file-url">SharePoint File URL</label>
+                    <div class="eg-settings-field" style="margin-bottom:14px">
+                        <label for="engam-ms-file-url">SharePoint Share Link</label>
                         <input class="eg-input" type="url" name="engam_v2_ms_file_url" id="engam-ms-file-url"
                             value="<?php echo esc_attr( $ms_file_url ); ?>"
-                            placeholder="https://yourorg.sharepoint.com/:x:/s/Site/...">
-                        <p class="eg-hint">Paste the URL from your browser address bar <strong>or</strong> the "Copy link" button in SharePoint. Either format works.</p>
+                            placeholder="https://equinenetwork.sharepoint.com/:x:/s/Home/...">
+                        <p class="eg-hint">In Excel/SharePoint click <strong>Share &rarr; Copy link</strong>. Make sure it reads <strong>&ldquo;Anyone with the link&rdquo;</strong>, then paste it here. (View-only is fine &mdash; the plugin only reads.)</p>
                     </div>
+
+                    <div class="eg-settings-field" style="margin-bottom:16px;max-width:260px">
+                        <label for="engam-ms-sheet">Worksheet / Tab Name</label>
+                        <input class="eg-input" type="text" name="engam_v2_ms_sheet_name" id="engam-ms-sheet"
+                            value="<?php echo esc_attr( $ms_sheet ); ?>"
+                            placeholder="HR">
+                        <p class="eg-hint">The tab name exactly as it appears in Excel (e.g. <code>HR</code>). Case-sensitive.</p>
+                    </div>
+
+                    <!-- Advanced: Azure (only needed when the file is NOT shared via "Anyone with the link") -->
+                    <details style="margin:0 0 16px;border:1px solid #deded8;border-radius:6px;overflow:hidden" <?php echo $ms_configured ? 'open' : ''; ?>>
+                        <summary style="padding:10px 14px;cursor:pointer;font-weight:700;font-size:13px;background:#f7f7f4;list-style:none;display:flex;justify-content:space-between;align-items:center">
+                            Private file? Advanced Microsoft (Azure) setup
+                            <span style="font-size:11px;font-weight:400;color:#888">requires a Microsoft admin</span>
+                        </summary>
+                        <div style="padding:14px">
+                            <p class="eg-hint" style="margin:0 0 12px">Only needed if the sheet <strong>cannot</strong> be shared with &ldquo;Anyone with the link.&rdquo; A Microsoft 365 / Azure admin must complete these steps:</p>
+                            <ol style="margin:0 0 14px 18px;padding:0;font-size:13px;line-height:1.6;color:#333">
+                                <li>Go to <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener" style="font-weight:700">portal.azure.com &rarr; Entra ID &rarr; App registrations</a> &rarr; <strong>New registration</strong>. Leave the redirect URI blank. Click <strong>Register</strong>.</li>
+                                <li>From the Overview page, copy the <strong>Directory (tenant) ID</strong> and <strong>Application (client) ID</strong>.</li>
+                                <li><strong>API permissions &rarr; Add a permission &rarr; Microsoft Graph &rarr; Application permissions</strong>. Add <code>Files.Read.All</code>, then click <strong>Grant admin consent</strong>.</li>
+                                <li><strong>Certificates &amp; secrets &rarr; New client secret</strong>. Copy the <strong>Value</strong> (not the ID) — it shows only once.</li>
+                            </ol>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                                <div class="eg-settings-field">
+                                    <label for="engam-ms-tenant">Directory (Tenant) ID</label>
+                                    <input class="eg-input" type="text" name="engam_v2_ms_tenant_id" id="engam-ms-tenant"
+                                        value="<?php echo esc_attr( $ms_tenant ); ?>"
+                                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                                </div>
+                                <div class="eg-settings-field">
+                                    <label for="engam-ms-client">Application (Client) ID</label>
+                                    <input class="eg-input" type="text" name="engam_v2_ms_client_id" id="engam-ms-client"
+                                        value="<?php echo esc_attr( $ms_client ); ?>"
+                                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                                </div>
+                                <div class="eg-settings-field" style="grid-column:1 / -1">
+                                    <label for="engam-ms-secret">Client Secret Value</label>
+                                    <input class="eg-input" type="password" name="engam_v2_ms_client_secret" id="engam-ms-secret"
+                                        value=""
+                                        placeholder="<?php echo $ms_secret_set ? '(saved — leave blank to keep)' : 'Paste secret value here'; ?>"
+                                        autocomplete="new-password">
+                                    <?php if ( $ms_secret_set ) : ?>
+                                    <p class="eg-hint" style="margin-top:4px">A secret is saved. Leave blank to keep it, or paste a new value to replace it.</p>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
 
                     <div style="display:flex;gap:10px;flex-wrap:wrap">
                         <button type="submit" class="eg-btn" style="flex:1;justify-content:center;display:flex">Save</button>

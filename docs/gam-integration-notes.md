@@ -237,3 +237,63 @@ actually returning.
 | 3.3.46 | Renamed that position to "Half Page" |
 | 3.3.47 | Admin UI pass; Stackers one‑card + read‑only AI categories from GAM |
 | 3.3.48 | Half Page lands inside listings (dominant‑container descent); black pills |
+| 3.3.49 | "View in GAM" column added to Carousels + Takeovers lists |
+| 3.3.50 | Sponsor sheet: Microsoft Graph (Azure app) OneDrive/SharePoint path |
+| 3.3.51 | Sponsor sheet: no‑Azure "Anyone with the link" path (download + XLSX parse) |
+
+---
+
+## 7. Sponsor spreadsheet (OneDrive / SharePoint / Google Sheets)
+
+Lives in `includes/class-equinenetwork-gam-v2-api.php`; UI in `admin/partials/engam-settings.php`
+("Sponsor Spreadsheet" card). Feeds the "Lock to Sponsor" dropdowns, the carousel renderer,
+the metabox, and the campaigns list — all via **`get_sponsor_options()`**, which returns
+`[ ['id'=>sponsorId, 'name'=>advertiser], … ]` for rows whose Status = "Active", cached 1 h
+in the `engam_v2_sponsor_options` transient.
+
+### Source priority (in `get_sponsor_options()`)
+1. **Microsoft Graph** — when all of `engam_v2_ms_{tenant_id,client_id,client_secret}` **and**
+   `engam_v2_ms_file_url` are set (`is_ms_configured()`).
+2. **Share-link (no Azure)** — when only `engam_v2_ms_file_url` is set.
+3. **Google Sheets CSV (legacy)** — when only `engam_v2_sheet_csv_url` is set.
+
+The shared row → sponsor extraction is **`extract_sponsors_from_rows()`** (header auto-detect +
+column heuristic), used by all three so behaviour is identical regardless of source.
+
+### Why the team's OneDrive sheet was tricky
+- The "sheet" is **`Sponsorship IDs.xlsx` on `equinenetwork.sharepoint.com`** (Microsoft 365),
+  not Google Sheets. Excel/SharePoint has **no "Publish to web as CSV"** equivalent.
+- **A Google service account cannot authenticate to OneDrive.** Google Cloud and Microsoft
+  Entra are separate identity systems — sharing the file to the `…iam.gserviceaccount.com`
+  address grants nothing the plugin can use.
+- The proper Microsoft equivalent (Graph app-only) needs an **Entra app registration +
+  `Files.Read.All` + admin consent**. The user hit **"You do not have access" (401)** on the
+  App registrations blade — app registration is admin-only in that tenant, and the admin-consent
+  step requires a Global Admin regardless. So Graph is blocked without IT involvement.
+
+### The no-Azure path that actually shipped (the file is shared "Anyone with the link")
+- **`ms_link_download($url)`** — appends `download=1` to the share URL and GETs it. Validates the
+  body starts with the ZIP signature `PK`; if it's HTML it's a sign-in page (link isn't truly
+  anonymous) → returns a friendly WP_Error.
+- **`xlsx_rows($binary, $sheet)`** — parses XLSX **with built-in `ZipArchive` + `SimpleXML`** (no
+  PhpSpreadsheet dependency):
+  - `xl/workbook.xml` + `xl/_rels/workbook.xml.rels` → map tab **name → worksheet XML** (the
+    `r:id` attribute is in the relationships namespace: `$s->attributes($rel_ns)->id`).
+  - `xl/sharedStrings.xml` → string table; `t="s"` cells store an **index** into it. Rich-text
+    `<si>` entries (multiple `<r><t>` runs) are concatenated.
+  - Cells are placed by **column letter** (`xlsx_col_index()`), padding gaps so columns align.
+- **`xlsx_sheet_names()`** lists tabs (used by Test Connection so a wrong tab name is obvious).
+- Default ns elements are accessed directly in SimpleXML; only the prefixed `r:id` needs the
+  namespace-qualified accessor.
+
+### Gotchas
+| Thing | Reality |
+|---|---|
+| Google SA → OneDrive | ❌ different identity systems; sharing to the SA email does nothing |
+| Excel "Publish to web as CSV" | ❌ no such feature (unlike Google Sheets) |
+| App registration in their tenant | ❌ admin-only (401); admin consent also needs a Global Admin |
+| `?download=1` on an anonymous share link | ✅ returns the raw `.xlsx` bytes server-side |
+| Parsing `.xlsx` | ✅ `ZipArchive` + `SimpleXML`, no external library |
+| Header row | ✅ auto-detected (skips the naming-convention title row at the top) |
+| Tab name | ⚠️ case-insensitive match, falls back to first sheet; Test Connection lists all tabs |
+| Anonymous link disabled / changed to "People in org" | ❌ breaks the link path → switch to Graph |
