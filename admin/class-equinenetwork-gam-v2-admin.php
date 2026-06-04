@@ -13,6 +13,7 @@ class Equinenetwork_Gam_V2_Admin {
 		add_action( 'wp_ajax_engam_v2_save_credentials', array( $this, 'ajax_save_credentials' ) );
 		add_action( 'wp_ajax_engam_v2_get_line_items',   array( $this, 'ajax_get_line_items' ) );
 		add_action( 'wp_ajax_engam_v2_test_sheets',      array( $this, 'ajax_test_sheets' ) );
+		add_action( 'wp_ajax_engam_v2_test_ms',          array( $this, 'ajax_test_ms' ) );
 		add_action( 'wp_ajax_engam_v2_sheets_tabs',      array( $this, 'ajax_sheets_tabs' ) );
 		add_action( 'wp_ajax_engam_v2_sheets_preview',   array( $this, 'ajax_sheets_preview' ) );
 		add_action( 'wp_ajax_engam_v2_sheets_save',      array( $this, 'ajax_sheets_save' ) );
@@ -290,6 +291,46 @@ class Equinenetwork_Gam_V2_Admin {
 		}
 
 		wp_send_json_success( 'Connected! Found ' . count( $options ) . ' active sponsors. Cache refreshed.' );
+	}
+
+	public function ajax_test_ms() {
+		check_ajax_referer( 'engam_v2_admin', 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) wp_die( -1 );
+
+		require_once EQUINENETWORK_GAM_V2_PATH . 'includes/class-equinenetwork-gam-v2-api.php';
+		$api = new Equinenetwork_Gam_V2_API();
+
+		// Full Azure (Microsoft Graph) path takes priority when configured.
+		if ( $api->is_ms_configured() ) {
+			$token = $api->get_graph_token();
+			if ( is_wp_error( $token ) ) {
+				wp_send_json_error( 'Could not get Microsoft token: ' . $token->get_error_message() );
+			}
+			$sheets = $api->get_ms_worksheet_names( true );
+			if ( is_wp_error( $sheets ) ) {
+				wp_send_json_error( 'Connected to Microsoft, but could not read the file: ' . $sheets->get_error_message() );
+			}
+			$options = $api->get_ms_sponsor_options( true );
+			$sheet   = get_option( 'engam_v2_ms_sheet_name', 'HR' );
+			wp_send_json_success(
+				'Connected via Microsoft Graph! Found ' . count( $options ) . ' active sponsors in the "' . esc_html( $sheet ) . '" tab. '
+				. 'Available tabs: ' . esc_html( implode( ', ', $sheets ) ) . '.'
+			);
+		}
+
+		// Otherwise, the no-Azure "Anyone with the link" path.
+		if ( get_option( 'engam_v2_ms_file_url', '' ) ) {
+			$result = $api->ms_link_diagnose();
+			if ( is_wp_error( $result ) ) {
+				wp_send_json_error( $result->get_error_message() );
+			}
+			wp_send_json_success(
+				'Connected via share link! Found ' . (int) $result['count'] . ' active sponsors in the "' . esc_html( $result['sheet'] ) . '" tab. '
+				. 'Available tabs: ' . esc_html( implode( ', ', $result['sheets'] ) ) . '.'
+			);
+		}
+
+		wp_send_json_error( 'Paste your SharePoint share link (and tab name) above, then click Save before testing.' );
 	}
 
 	public function ajax_sheets_tabs() {

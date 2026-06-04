@@ -7,14 +7,16 @@ if ( ! defined( 'WPINC' ) ) die;
  */
 class Equinenetwork_Gam_V2_API {
 
-	const CACHE_KEY        = 'engam_v2_line_items';
-	const CACHE_DURATION   = 3600; // 1 hour
-	const TOKEN_CACHE      = 'engam_v2_access_token';
-	const GAM_REST_BASE    = 'https://admanager.googleapis.com/v1';
-	const CACHE_SITE_UNITS = 'engam_v2_site_unit_res'; // stores ad unit resource names
-	const REPORT_NAME      = 'EN Plugin — Line Items by Ad Unit (auto)';
-	const REPORT_RANGE     = 'LAST_90_DAYS'; // window used to detect line items running on the site
-	const CACHE_AI_CATS    = 'engam_v2_ai_category_values'; // read-only ai_category targeting taxonomy from GAM
+	const CACHE_KEY          = 'engam_v2_line_items';
+	const CACHE_DURATION     = 3600; // 1 hour
+	const TOKEN_CACHE        = 'engam_v2_access_token';
+	const GAM_REST_BASE      = 'https://admanager.googleapis.com/v1';
+	const CACHE_SITE_UNITS   = 'engam_v2_site_unit_res'; // stores ad unit resource names
+	const REPORT_NAME        = 'EN Plugin — Line Items by Ad Unit (auto)';
+	const REPORT_RANGE       = 'LAST_90_DAYS'; // window used to detect line items running on the site
+	const CACHE_AI_CATS      = 'engam_v2_ai_category_values'; // read-only ai_category targeting taxonomy from GAM
+	const CACHE_GRAPH_TOKEN  = 'engam_v2_graph_token';       // Microsoft Graph OAuth2 token
+	const CACHE_MS_SHEETS    = 'engam_v2_ms_worksheets';     // cached list of worksheet names
 
 	private $credentials;
 	private $network_code;
@@ -760,6 +762,17 @@ class Equinenetwork_Gam_V2_API {
 	 * Only rows where Status = "Active" are included.
 	 */
 	public function get_sponsor_options( $force_refresh = false ) {
+		// Microsoft Graph (full Azure app) takes priority when configured.
+		if ( $this->is_ms_configured() ) {
+			return $this->get_ms_sponsor_options( $force_refresh );
+		}
+
+		// Otherwise, if a SharePoint file URL is set without Azure credentials, read it
+		// via the public "Anyone with the link" download (no Azure app required).
+		if ( get_option( 'engam_v2_ms_file_url', '' ) ) {
+			return $this->get_ms_link_sponsor_options( $force_refresh );
+		}
+
 		$csv_url = get_option( 'engam_v2_sheet_csv_url', '' );
 		if ( empty( $csv_url ) ) return array();
 
@@ -933,6 +946,465 @@ class Equinenetwork_Gam_V2_API {
 		return isset( $body['values'] ) ? $body['values'] : array();
 	}
 
+	// ── Microsoft Graph / OneDrive ────────────────────────────────────────────
+
+	public function is_ms_configured() {
+		return get_option( 'engam_v2_ms_tenant_id', '' )
+			&& get_option( 'engam_v2_ms_client_id', '' )
+			&& get_option( 'engam_v2_ms_client_secret', '' )
+			&& get_option( 'engam_v2_ms_file_url', '' );
+	}
+
+	/**
+	 * Gets an OAuth2 token via Microsoft client-credentials flow.
+	 */
+	public function get_graph_token() {
+		$cached = get_transient( self::CACHE_GRAPH_TOKEN );
+		if ( $cached ) return $cached;
+
+		$tenant = get_option( 'engam_v2_ms_tenant_id', '' );
+		$client = get_option( 'engam_v2_ms_client_id', '' );
+		$secret = get_option( 'engam_v2_ms_client_secret', '' );
+
+		if ( ! $tenant || ! $client || ! $secret ) {
+			return new WP_Error( 'ms_not_configured', 'Microsoft credentials not configured.' );
+		}
+
+		$response = wp_remote_post(
+			'https://login.microsoftonline.com/' . rawurlencode( $tenant ) . '/oauth2/v2.0/token',
+			array(
+				'timeout' => 15,
+				'body'    => array(
+					'grant_type'    => 'client_credentials',
+					'client_id'     => $client,
+					'client_secret' => $secret,
+					'scope'         => 'https://graph.microsoft.com/.default',
+				),
+			)
+		);
+
+		if ( is_wp_error( $response ) ) return $response;
+
+		$body = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( empty( $body['access_token'] ) ) {
+			$err = $body['error_description'] ?? ( $body['error'] ?? wp_json_encode( $body ) );
+			return new WP_Error( 'graph_token_error', 'Microsoft OAuth2 error: ' . $err );
+		}
+
+		$ttl = isset( $body['expires_in'] ) ? (int) $body['expires_in'] - 60 : 3540;
+		set_transient( self::CACHE_GRAPH_TOKEN, $body['access_token'], $ttl );
+		return $body['access_token'];
+	}
+
+	/**
+	 * Converts a SharePoint share URL into the Graph API driveItem base URL,
+	 * resolving drive+item IDs for maximum compatibility.
+	 */
+	private function graph_file_base( $file_url, $token ) {
+		$share_id = 'u!' . rtrim( strtr( base64_encode( $file_url ), '+/', '-_' ), '=' );
+		$share_base = 'https://graph.microsoft.com/v1.0/shares/' . rawurlencode( $share_id ) . '/driveItem';
+
+		$response = wp_remote_get( $share_base . '?$select=id,parentReference', array(
+			'timeout' => 15,
+			'headers' => array( 'Authorization' => 'Bearer ' . $token ),
+		) );
+
+		if ( is_wp_error( $response ) ) return $response;
+
+		$code = wp_remote_retrieve_response_code( $response );
+		$body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+		if ( $code !== 200 ) {
+			$msg = $body['error']['message'] ?? ( 'HTTP ' . $code );
+			return new WP_Error( 'graph_resolve_error', $msg );
+		}
+
+		$item_id  = $body['id']                           ?? '';
+		$drive_id = $body['parentReference']['driveId']   ?? '';
+
+		if ( $drive_id && $item_id ) {
+			return "https://graph.microsoft.com/v1.0/drives/{$drive_id}/items/{$item_id}";
+		}
+
+		return $share_base;
+	}
+
+	/**
+	 * Returns the worksheet names for the configured OneDrive/SharePoint file.
+	 */
+	public function get_ms_worksheet_names( $force_refresh = false ) {
+		if ( ! $this->is_ms_configured() ) {
+			return new WP_Error( 'ms_not_configured', 'Microsoft credentials not configured.' );
+		}
+
+		if ( ! $force_refresh ) {
+			$cached = get_transient( self::CACHE_MS_SHEETS );
+			if ( $cached !== false ) return $cached;
+		}
+
+		$token = $this->get_graph_token();
+		if ( is_wp_error( $token ) ) return $token;
+
+		$base = $this->graph_file_base( get_option( 'engam_v2_ms_file_url', '' ), $token );
+		if ( is_wp_error( $base ) ) return $base;
+
+		$response = wp_remote_get( $base . '/workbook/worksheets?$select=name,position', array(
+			'timeout' => 15,
+			'headers' => array(
+				'Authorization' => 'Bearer ' . $token,
+				'Content-Type'  => 'application/json',
+			),
+		) );
+
+		if ( is_wp_error( $response ) ) return $response;
+
+		$code = wp_remote_retrieve_response_code( $response );
+		$body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+		if ( $code !== 200 ) {
+			$msg = $body['error']['message'] ?? ( 'HTTP ' . $code );
+			return new WP_Error( 'graph_worksheets_error', $msg );
+		}
+
+		$names = array();
+		if ( ! empty( $body['value'] ) ) {
+			usort( $body['value'], function ( $a, $b ) { return (int) $a['position'] - (int) $b['position']; } );
+			foreach ( $body['value'] as $ws ) {
+				if ( isset( $ws['name'] ) ) $names[] = $ws['name'];
+			}
+		}
+
+		set_transient( self::CACHE_MS_SHEETS, $names, 12 * HOUR_IN_SECONDS );
+		return $names;
+	}
+
+	/**
+	 * Reads active sponsors from the configured OneDrive/SharePoint Excel file.
+	 * Auto-detects the header row by looking for a row containing "Advertiser".
+	 */
+	public function get_ms_sponsor_options( $force_refresh = false ) {
+		$cache_key = 'engam_v2_sponsor_options';
+		if ( ! $force_refresh ) {
+			$cached = get_transient( $cache_key );
+			if ( $cached !== false ) return $cached;
+		}
+
+		$token = $this->get_graph_token();
+		if ( is_wp_error( $token ) ) return array();
+
+		$sheet = get_option( 'engam_v2_ms_sheet_name', 'HR' );
+		$base  = $this->graph_file_base( get_option( 'engam_v2_ms_file_url', '' ), $token );
+		if ( is_wp_error( $base ) ) return array();
+
+		$response = wp_remote_get(
+			$base . '/workbook/worksheets/' . rawurlencode( $sheet ) . '/usedRange(valuesOnly=true)',
+			array(
+				'timeout' => 20,
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $token,
+					'Content-Type'  => 'application/json',
+				),
+			)
+		);
+
+		if ( is_wp_error( $response ) ) return array();
+
+		$code = wp_remote_retrieve_response_code( $response );
+		$body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+		if ( $code !== 200 || empty( $body['values'] ) ) return array();
+
+		$options = $this->extract_sponsors_from_rows( $body['values'] );
+		set_transient( $cache_key, $options, self::CACHE_DURATION );
+		return $options;
+	}
+
+	/**
+	 * Shared sponsor extraction: takes a 2D array of cell rows (from Graph or a
+	 * parsed XLSX) and returns [ ['id'=>..,'name'=>..], .. ] for "Active" rows.
+	 * Auto-detects the header row so a naming-convention/title row above the
+	 * real headers (as in the Sponsorship IDs sheet) is skipped.
+	 */
+	private function extract_sponsors_from_rows( $all_rows ) {
+		if ( ! is_array( $all_rows ) || empty( $all_rows ) ) return array();
+
+		// Find the first row that looks like a header (contains "Advertiser" or "Sponsorship ID").
+		$header_idx = null;
+		foreach ( $all_rows as $i => $row ) {
+			if ( ! is_array( $row ) ) continue;
+			foreach ( $row as $cell ) {
+				$lc = strtolower( trim( (string) $cell ) );
+				if ( strpos( $lc, 'advertiser' ) !== false
+					|| ( strpos( $lc, 'sponsor' ) !== false && strpos( $lc, 'id' ) !== false ) ) {
+					$header_idx = $i;
+					break 2;
+				}
+			}
+		}
+		if ( $header_idx === null ) return array();
+
+		$headers   = $all_rows[ $header_idx ];
+		$data_rows = array_slice( $all_rows, $header_idx + 1 );
+
+		$col_name = $col_id = $col_status = null;
+		foreach ( $headers as $i => $h ) {
+			$h = strtolower( trim( (string) $h ) );
+			if ( $col_name   === null && ( strpos( $h, 'advertiser' ) !== false || strpos( $h, 'name' ) !== false ) ) $col_name   = $i;
+			if ( $col_id     === null && strpos( $h, 'sponsor' ) !== false && strpos( $h, 'id' ) !== false )          $col_id     = $i;
+			if ( $col_status === null && strpos( $h, 'status' ) !== false )                                            $col_status = $i;
+		}
+		$col_name   = $col_name   ?? 0;
+		$col_id     = $col_id     ?? 2;
+		$col_status = $col_status ?? 3;
+
+		$options = array();
+		foreach ( $data_rows as $row ) {
+			if ( ! is_array( $row ) || empty( $row ) ) continue;
+			$sponsor_id = trim( (string) ( $row[ $col_id ] ?? '' ) );
+			if ( $sponsor_id === '' ) continue;
+			$status = strtolower( trim( (string) ( $row[ $col_status ] ?? '' ) ) );
+			if ( $status !== 'active' ) continue;
+			$advertiser = trim( (string) ( $row[ $col_name ] ?? '' ) );
+			$options[]  = array(
+				'id'   => $sponsor_id,
+				'name' => $advertiser !== '' ? $advertiser : $sponsor_id,
+			);
+		}
+
+		usort( $options, function ( $a, $b ) { return strcasecmp( $a['name'], $b['name'] ); } );
+		return $options;
+	}
+
+	// ── OneDrive/SharePoint via "Anyone with the link" (no Azure app) ──────────
+
+	/**
+	 * Downloads raw file bytes from a SharePoint/OneDrive "Anyone with the link"
+	 * URL by appending download=1. Returns the binary string or a WP_Error.
+	 */
+	private function ms_link_download( $url ) {
+		$url = trim( (string) $url );
+		if ( $url === '' ) return new WP_Error( 'no_url', 'No file URL configured.' );
+
+		$download_url = $url . ( strpos( $url, '?' ) !== false ? '&' : '?' ) . 'download=1';
+
+		$response = wp_remote_get( $download_url, array(
+			'timeout'     => 25,
+			'redirection' => 5,
+			'headers'     => array( 'User-Agent' => 'EquineNetwork-GAM-Plugin/1.0' ),
+		) );
+
+		if ( is_wp_error( $response ) ) return $response;
+
+		$code = wp_remote_retrieve_response_code( $response );
+		$body = wp_remote_retrieve_body( $response );
+
+		if ( $code !== 200 || $body === '' ) {
+			return new WP_Error( 'ms_link_http', 'The share link returned HTTP ' . $code . '. Make sure it is reachable.' );
+		}
+
+		// XLSX is a ZIP — it must start with the "PK" signature. Anything else is
+		// almost always an HTML sign-in page, i.e. the link is not truly anonymous.
+		if ( substr( $body, 0, 2 ) !== 'PK' ) {
+			return new WP_Error(
+				'ms_link_not_file',
+				'The link returned a web page instead of the file. In SharePoint set the share link to "Anyone with the link" (not "People in Equine Network"), then paste it again.'
+			);
+		}
+
+		return $body;
+	}
+
+	/**
+	 * Opens an XLSX binary as a zip and runs $callback( ZipArchive ). Handles the
+	 * temp-file shuffle ZipArchive requires (it cannot open a zip from a string).
+	 */
+	private function with_xlsx_zip( $binary, $callback ) {
+		if ( ! class_exists( 'ZipArchive' ) ) {
+			return new WP_Error( 'no_zip', 'This server is missing the PHP Zip extension, so .xlsx files cannot be read. Use the Azure (Microsoft Graph) option instead.' );
+		}
+		$tmp = wp_tempnam( 'engam-xlsx' );
+		if ( ! $tmp ) return new WP_Error( 'no_tmp', 'Could not create a temporary file to read the spreadsheet.' );
+
+		file_put_contents( $tmp, $binary );
+		$zip = new ZipArchive();
+		if ( $zip->open( $tmp ) !== true ) {
+			@unlink( $tmp );
+			return new WP_Error( 'bad_zip', 'The downloaded file is not a valid .xlsx workbook.' );
+		}
+		$result = call_user_func( $callback, $zip );
+		$zip->close();
+		@unlink( $tmp );
+		return $result;
+	}
+
+	/**
+	 * Converts a spreadsheet column reference (A, B, .., AA) to a zero-based index.
+	 */
+	private function xlsx_col_index( $ref ) {
+		if ( ! preg_match( '/^([A-Z]+)/', $ref, $m ) ) return 0;
+		$letters = $m[1];
+		$n = 0;
+		for ( $i = 0, $len = strlen( $letters ); $i < $len; $i++ ) {
+			$n = $n * 26 + ( ord( $letters[ $i ] ) - 64 );
+		}
+		return $n - 1;
+	}
+
+	/**
+	 * Returns the worksheet (tab) names from an XLSX binary, in tab order.
+	 */
+	private function xlsx_sheet_names( $binary ) {
+		return $this->with_xlsx_zip( $binary, function ( $zip ) {
+			$wb_xml = $zip->getFromName( 'xl/workbook.xml' );
+			if ( $wb_xml === false ) return new WP_Error( 'no_workbook', 'Workbook structure not found in the file.' );
+			$wb = simplexml_load_string( $wb_xml );
+			if ( ! $wb || ! isset( $wb->sheets->sheet ) ) return array();
+			$names = array();
+			foreach ( $wb->sheets->sheet as $s ) {
+				$names[] = (string) $s['name'];
+			}
+			return $names;
+		} );
+	}
+
+	/**
+	 * Reads a single worksheet from an XLSX binary into a 2D array of strings,
+	 * resolving the shared-string table. Empty cells are padded so columns align.
+	 */
+	private function xlsx_rows( $binary, $sheet_name ) {
+		return $this->with_xlsx_zip( $binary, function ( $zip ) use ( $sheet_name ) {
+			$wb_xml   = $zip->getFromName( 'xl/workbook.xml' );
+			$rels_xml = $zip->getFromName( 'xl/_rels/workbook.xml.rels' );
+			if ( $wb_xml === false || $rels_xml === false ) {
+				return new WP_Error( 'no_workbook', 'Workbook structure not found in the file.' );
+			}
+
+			$wb   = simplexml_load_string( $wb_xml );
+			$rels = simplexml_load_string( $rels_xml );
+			if ( ! $wb || ! $rels ) return new WP_Error( 'bad_xml', 'Could not parse the workbook.' );
+
+			$rel_ns = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+
+			// Relationship Id → worksheet target path.
+			$rid_to_target = array();
+			foreach ( $rels->Relationship as $r ) {
+				$rid_to_target[ (string) $r['Id'] ] = (string) $r['Target'];
+			}
+
+			// Match the requested tab name (case-insensitive); fall back to the first sheet.
+			$target = '';
+			$first  = '';
+			foreach ( $wb->sheets->sheet as $s ) {
+				$rid = (string) $s->attributes( $rel_ns )->id;
+				$tgt = $rid_to_target[ $rid ] ?? '';
+				if ( $first === '' ) $first = $tgt;
+				if ( strcasecmp( (string) $s['name'], $sheet_name ) === 0 ) { $target = $tgt; break; }
+			}
+			if ( $target === '' ) $target = $first;
+			if ( $target === '' ) return new WP_Error( 'no_sheet', 'Worksheet "' . $sheet_name . '" not found.' );
+
+			$path      = 'xl/' . ltrim( str_replace( '/xl/', '', $target ), '/' );
+			$sheet_xml = $zip->getFromName( $path );
+			if ( $sheet_xml === false ) $sheet_xml = $zip->getFromName( ltrim( $target, '/' ) );
+			if ( $sheet_xml === false ) return new WP_Error( 'no_sheet_xml', 'Worksheet data could not be read.' );
+
+			// Shared-string table (may be absent if the sheet has only numbers/inline text).
+			$strings = array();
+			$ss_xml  = $zip->getFromName( 'xl/sharedStrings.xml' );
+			if ( $ss_xml !== false ) {
+				$ss = simplexml_load_string( $ss_xml );
+				if ( $ss && isset( $ss->si ) ) {
+					foreach ( $ss->si as $si ) {
+						if ( isset( $si->r ) ) {
+							$text = '';
+							foreach ( $si->r as $run ) { $text .= (string) $run->t; }
+							$strings[] = $text;
+						} else {
+							$strings[] = (string) $si->t;
+						}
+					}
+				}
+			}
+
+			$sx = simplexml_load_string( $sheet_xml );
+			if ( ! $sx || ! isset( $sx->sheetData ) ) return array();
+
+			$rows = array();
+			foreach ( $sx->sheetData->row as $row ) {
+				$cells = array();
+				$max   = -1;
+				foreach ( $row->c as $c ) {
+					$idx  = $this->xlsx_col_index( (string) $c['r'] );
+					$type = (string) $c['t'];
+					if ( $type === 's' ) {
+						$val = $strings[ (int) $c->v ] ?? '';
+					} elseif ( $type === 'inlineStr' ) {
+						$val = isset( $c->is->t ) ? (string) $c->is->t : '';
+					} else {
+						$val = isset( $c->v ) ? (string) $c->v : '';
+					}
+					$cells[ $idx ] = $val;
+					if ( $idx > $max ) $max = $idx;
+				}
+				$out = array();
+				for ( $i = 0; $i <= $max; $i++ ) {
+					$out[ $i ] = $cells[ $i ] ?? '';
+				}
+				$rows[] = $out;
+			}
+			return $rows;
+		} );
+	}
+
+	/**
+	 * Active sponsors read straight from the "Anyone with the link" file (no Azure).
+	 */
+	public function get_ms_link_sponsor_options( $force_refresh = false ) {
+		$cache_key = 'engam_v2_sponsor_options';
+		if ( ! $force_refresh ) {
+			$cached = get_transient( $cache_key );
+			if ( $cached !== false ) return $cached;
+		}
+
+		$binary = $this->ms_link_download( get_option( 'engam_v2_ms_file_url', '' ) );
+		if ( is_wp_error( $binary ) ) return array();
+
+		$rows = $this->xlsx_rows( $binary, get_option( 'engam_v2_ms_sheet_name', 'HR' ) );
+		if ( is_wp_error( $rows ) ) return array();
+
+		$options = $this->extract_sponsors_from_rows( $rows );
+		set_transient( $cache_key, $options, self::CACHE_DURATION );
+		return $options;
+	}
+
+	/**
+	 * One-shot diagnostic for the share-link path: downloads once, lists tabs, and
+	 * counts active sponsors, refreshing the cache. Used by the Test Connection button.
+	 */
+	public function ms_link_diagnose() {
+		$url = get_option( 'engam_v2_ms_file_url', '' );
+		if ( ! $url ) return new WP_Error( 'no_url', 'Paste your SharePoint share link first, then click Save.' );
+
+		$binary = $this->ms_link_download( $url );
+		if ( is_wp_error( $binary ) ) return $binary;
+
+		$sheets = $this->xlsx_sheet_names( $binary );
+		if ( is_wp_error( $sheets ) ) return $sheets;
+
+		$sheet = get_option( 'engam_v2_ms_sheet_name', 'HR' );
+		$rows  = $this->xlsx_rows( $binary, $sheet );
+		if ( is_wp_error( $rows ) ) return $rows;
+
+		$options = $this->extract_sponsors_from_rows( $rows );
+		set_transient( 'engam_v2_sponsor_options', $options, self::CACHE_DURATION );
+
+		return array(
+			'sheets' => $sheets,
+			'sheet'  => $sheet,
+			'count'  => count( $options ),
+		);
+	}
+
 	/**
 	 * Clears cached line items and token so next request fetches fresh data.
 	 */
@@ -945,6 +1417,8 @@ class Equinenetwork_Gam_V2_API {
 		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_engam_v2_wrap_cr_%' OR option_name LIKE '_transient_timeout_engam_v2_wrap_cr_%'" );
 		delete_transient( 'engam_v2_sponsor_options' );
 		delete_transient( 'engam_v2_sheets_token' );
+		delete_transient( self::CACHE_GRAPH_TOKEN );
+		delete_transient( self::CACHE_MS_SHEETS );
 	}
 
 	/**

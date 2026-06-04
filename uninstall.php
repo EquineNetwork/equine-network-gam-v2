@@ -34,7 +34,7 @@ function engam_v2_uninstall_cleanup() {
         'engam_v2_stacker_settings',
         'engam_v2_stackers_list',          // legacy
         'engam_v2_stacker_name_filter',    // legacy
-        // Google Sheet sponsor source
+        // Sponsor spreadsheet — Google Sheets CSV (legacy)
         'engam_v2_sheet_csv_url',
         'engam_v2_sheet_id',
         'engam_v2_sheet_tab',
@@ -42,6 +42,12 @@ function engam_v2_uninstall_cleanup() {
         'engam_v2_sheet_col_id',
         'engam_v2_sheet_col_name',
         'engam_v2_sheet_col_status',
+        // Sponsor spreadsheet — Microsoft Graph / OneDrive
+        'engam_v2_ms_tenant_id',
+        'engam_v2_ms_client_id',
+        'engam_v2_ms_client_secret',
+        'engam_v2_ms_file_url',
+        'engam_v2_ms_sheet_name',
     );
     foreach ( $options as $opt ) {
         delete_option( $opt );
@@ -53,6 +59,8 @@ function engam_v2_uninstall_cleanup() {
         'engam_v2_access_token',
         'engam_v2_adslot_counts',
         'engam_v2_sheets_token',
+        'engam_v2_graph_token',
+        'engam_v2_ms_worksheets',
         'engam_v2_sponsor_options',
         'engam_v2_slot_warnings',
         'engam_v2_debug_targeting', // legacy
