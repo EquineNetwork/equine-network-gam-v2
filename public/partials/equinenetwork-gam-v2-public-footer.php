@@ -104,9 +104,6 @@ googletag.cmd.push(function() {
 
 	// Global GPT config — must be set once before any slot is defined.
 	googletag.setConfig({centering: true});
-	// Defer fetching below-the-fold slots until they are near the viewport.
-	// Must be called before enableServices(); incompatible with enableSingleRequest().
-	googletag.pubads().enableLazyLoad({fetchMarginPercent:500,renderMarginPercent:200,mobileScaling:2.0});
 	var displayQueue = [];
 
 	for (var i = 0; i < adSlots.length; i++) {
@@ -214,6 +211,11 @@ googletag.cmd.push(function() {
 		// Collapse empty slots + their Elementor container.
 		if ( callbacks === 0 ) {
 			googletag.pubads().addEventListener('slotRenderEnded', function(event) {
+				// Takeover wrap panel slots have their own dedicated handler in the
+				// takeover class. Skip them here to avoid margin/display interference.
+				var _eid = event.slot.getSlotElementId();
+				if (_eid === 'engam-wrap-slot-left' || _eid === 'engam-wrap-slot-right' || _eid === 'engam-wrap-slot-bg') return;
+
 				if ( event.advertiserId === null ) {
 					var emptySlot = document.getElementById(event.slot.getSlotElementId());
 					if ( emptySlot ) {
@@ -340,8 +342,7 @@ googletag.cmd.push(function() {
 		}
 		callbacks++;
 	}
-	// Register services once after all slots are defined (calling inside the loop
-	// was a no-op after the first call but forced GPT to re-validate on every iteration).
+	// Register services once after all slots are defined.
 	googletag.enableServices();
 	displayQueue.forEach(function(id){googletag.display(id);});
 });
