@@ -102,6 +102,13 @@ googletag.cmd.push(function() {
 		return filtered.length ? filtered : null;
 	}
 
+	// Global GPT config — must be set once before any slot is defined.
+	googletag.setConfig({centering: true});
+	// Defer fetching below-the-fold slots until they are near the viewport.
+	// Must be called before enableServices(); incompatible with enableSingleRequest().
+	googletag.pubads().enableLazyLoad({fetchMarginPercent:500,renderMarginPercent:200,mobileScaling:2.0});
+	var displayQueue = [];
+
 	for (var i = 0; i < adSlots.length; i++) {
 		var slot       = adSlots[i];
 		var sizeDesktop = (typeof slot.dataset.sizedesktop === 'undefined') ? null : JSON.parse(slot.dataset.sizedesktop);
@@ -199,9 +206,7 @@ googletag.cmd.push(function() {
 
 			slot.innerHTML += injectedHTML;
 
-			if ( adAlign === 'center' ) googletag.setConfig({centering: true});
-			googletag.enableServices();
-			googletag.display(divID);
+			displayQueue.push(divID);
 		}
 
 		popup = false;
@@ -335,6 +340,10 @@ googletag.cmd.push(function() {
 		}
 		callbacks++;
 	}
+	// Register services once after all slots are defined (calling inside the loop
+	// was a no-op after the first call but forced GPT to re-validate on every iteration).
+	googletag.enableServices();
+	displayQueue.forEach(function(id){googletag.display(id);});
 });
 
 }, false);
