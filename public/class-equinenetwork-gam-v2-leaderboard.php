@@ -163,16 +163,12 @@ class Equinenetwork_Gam_V2_Leaderboard {
 		if(cs.display==='flex'||cs.display==='inline-flex')return cs.flexDirection.indexOf('column')===0;
 		return true; // normal block flow stacks vertically
 	}
-	function insertNearMid(container,node){
+	function insertBeforeMiddleChild(container,node){
+		// Insert before the middle child BY COUNT — robust even before images load and heights
+		// settle, which is what "halfway down the list" should mean for a feed of items.
 		var kids=elChildren(container).filter(function(k){return k!==node&&!node.contains(k);});
 		if(!kids.length){container.appendChild(node);spanFull(node);return;}
-		var rect=container.getBoundingClientRect();
-		var midY=rect.top+rect.height/2;
-		var ref=null;
-		for(var i=0;i<kids.length;i++){
-			var kr=kids[i].getBoundingClientRect();
-			if(kr.top+kr.height/2>=midY){ref=kids[i];break;}
-		}
+		var ref=kids[Math.floor(kids.length/2)];
 		if(ref){container.insertBefore(node,ref);}else{container.appendChild(node);}
 		spanFull(node);
 	}
@@ -184,11 +180,13 @@ class Equinenetwork_Gam_V2_Leaderboard {
 				if(matches.length>1){
 					var mid=matches[Math.floor(matches.length/2)];
 					if(mid&&mid.parentNode){mid.parentNode.insertBefore(s,mid);spanFull(s);return;}
-				}else if(matches.length===1){insertNearMid(matches[0],s);return;}
+				}else if(matches.length===1){insertBeforeMiddleChild(matches[0],s);return;}
 			}catch(e){}
 		}
-		// No (or unmatched) selector: find the main content, then walk down to the busiest
-		// vertical stack of blocks (e.g. the events column) and drop the band near its midpoint.
+		// No (or unmatched) selector: walk down into the DOMINANT content container — the one that
+		// holds most of the page height (the listings) — then drop the band before its middle child.
+		// Descending past the [filter, listings] split is what keeps the band inside the list
+		// instead of landing above it.
 		var sels=['main .elementor','.elementor','main .entry-content','.entry-content','main article','main','article','#primary','#content','.site-content'];
 		var root=null;
 		for(var d=0;d<sels.length;d++){
@@ -197,21 +195,17 @@ class Equinenetwork_Gam_V2_Leaderboard {
 		}
 		if(!root)root=document.querySelector('main')||document.body;
 		var cur=root,guard=0;
-		while(guard++<8){
-			var kids=elChildren(cur);
-			if(kids.length===1){cur=kids[0];continue;}        // unwrap single-child wrappers
-			if(kids.length>1&&isVerticalStack(cur))break;      // reached the vertical stack
-			if(kids.length>1){                                 // horizontal/grid: dive into the busiest child
-				var best=kids[0],bestScore=-1;
-				kids.forEach(function(k){
-					var score=k.getElementsByTagName('*').length;
-					if(score>bestScore){bestScore=score;best=k;}
-				});
-				cur=best;continue;
-			}
-			break;
+		while(guard++<12){
+			var kids=elChildren(cur).filter(function(k){return k!==s&&!s.contains(k);});
+			if(kids.length===0)break;
+			if(kids.length===1){cur=kids[0];continue;}             // unwrap single-child wrappers
+			var curH=cur.getBoundingClientRect().height||1;
+			var tallest=kids[0],hT=-1;
+			kids.forEach(function(k){var h=k.getBoundingClientRect().height;if(h>hT){hT=h;tallest=k;}});
+			if(hT>=0.6*curH){cur=tallest;continue;}                // one child dominates → descend into it
+			break;                                                 // children distributed → this is the list level
 		}
-		insertNearMid(cur,s);
+		insertBeforeMiddleChild(cur,s);
 	}
 	function move(){
 		var hSlots=document.querySelectorAll('[data-engam-leaderboard="header"]');
