@@ -33,6 +33,33 @@ $lb_active      = count( array_filter( $all_lbs, function( $lb ) { return ! empt
 $lb_header_on   = count( array_filter( $all_lbs, function( $lb ) { return ! empty( $lb['active'] ) && ( ! isset( $lb['position'] ) || $lb['position'] === 'header' ); } ) ) > 0;
 $lb_footer_on   = count( array_filter( $all_lbs, function( $lb ) { return ! empty( $lb['active'] ) && isset( $lb['position'] ) && $lb['position'] === 'footer'; } ) ) > 0;
 
+// Build placement detail rows shown inside the Leaderboards dashboard card.
+$lb_detail_rows = array();
+foreach ( $all_lbs as $lb ) {
+    if ( empty( $lb['active'] ) ) continue;
+    $pos_val = $lb['position'] ?? 'header';
+    if ( preg_match( '/^(header|footer)_tmpl_(\d+)$/', $pos_val, $lpm ) ) {
+        $lpm_post  = get_post( (int) $lpm[2] );
+        $type_label = $lpm[1] === 'header' ? 'Header' : 'Footer';
+        $pos_label  = $type_label . ': ' . ( $lpm_post ? $lpm_post->post_title : '#' . $lpm[2] );
+    } elseif ( $pos_val === 'footer' ) {
+        $pos_label = 'Footer';
+    } elseif ( $pos_val === 'midpoint' ) {
+        $tp = trim( (string) ( $lb['target_pages'] ?? '' ) );
+        $pos_label = 'Half Page';
+        if ( $tp !== '' ) {
+            $tp_post = is_numeric( $tp ) ? get_post( (int) $tp ) : get_page_by_path( $tp );
+            $pos_label .= ': ' . ( $tp_post ? $tp_post->post_title : $tp );
+        }
+    } else {
+        $pos_label = 'Header';
+    }
+    $lb_detail_rows[] = array(
+        'name' => $lb['name'] ?? '(untitled)',
+        'pos'  => $pos_label,
+    );
+}
+
 $all_takeovers   = get_option( 'engam_v2_takeovers', array() );
 $masthead_on     = count( array_filter( $all_takeovers, function( $t ) { return ! empty( $t['active'] ) && ( ( $t['type'] ?? 'wrap' ) === 'masthead' ); } ) ) > 0;
 $wrap_on         = count( array_filter( $all_takeovers, function( $t ) { return ! empty( $t['active'] ) && ( ( $t['type'] ?? 'wrap' ) === 'wrap' ); } ) ) > 0;
@@ -84,15 +111,16 @@ if ( ! function_exists( 'engam_v2_walk_ad_slots' ) ) {
 
 global $wpdb;
 delete_transient( 'engam_v2_adslot_counts' );
-$ad_slot_counts = false;
+$ad_slot_counts     = false;
+$ad_slot_placements = array(); // preset → [ ['title'=>..., 'post_id'=>..., 'type'=>...], ... ]
 if ( false === $ad_slot_counts ) {
     $ad_slot_counts = array(
         'leaderboard' => 0, 'medium_rect' => 0, 'half_page' => 0,
         'med_half'    => 0, 'takeover'    => 0, 'custom'    => 0,
     );
     try {
-        $rows = $wpdb->get_col(
-            "SELECT m.meta_value
+        $el_rows = $wpdb->get_results(
+            "SELECT m.meta_value, p.ID AS post_id, p.post_title, p.post_type
                FROM {$wpdb->postmeta} m
                INNER JOIN {$wpdb->posts} p ON p.ID = m.post_id
               WHERE m.meta_key = '_elementor_data'
@@ -100,16 +128,41 @@ if ( false === $ad_slot_counts ) {
                 AND p.post_status IN ( 'publish', 'private' )
                 AND p.post_type NOT IN ( 'revision' )"
         );
-        if ( is_array( $rows ) ) {
-            foreach ( $rows as $json ) {
-                $data = json_decode( $json, true );
-                if ( is_array( $data ) ) {
-                    engam_v2_walk_ad_slots( $data, $ad_slot_counts );
+        if ( is_array( $el_rows ) ) {
+            foreach ( $el_rows as $el_row ) {
+                $data = json_decode( $el_row->meta_value, true );
+                if ( ! is_array( $data ) ) continue;
+
+                // Count slots within this post separately so we know which presets it contains.
+                $local_counts = array();
+                engam_v2_walk_ad_slots( $data, $local_counts );
+
+                // Accumulate into global totals.
+                foreach ( $local_counts as $preset => $n ) {
+                    if ( ! isset( $ad_slot_counts[ $preset ] ) ) $ad_slot_counts[ $preset ] = 0;
+                    $ad_slot_counts[ $preset ] += $n;
+                }
+
+                // Record placement label for each preset found in this post.
+                if ( ! empty( $local_counts ) ) {
+                    $is_tmpl   = ( $el_row->post_type === 'elementor_library' );
+                    $tmpl_type = $is_tmpl ? get_post_meta( (int) $el_row->post_id, '_elementor_template_type', true ) : '';
+                    $pl_label  = $el_row->post_title ?: '(untitled)';
+                    if ( $is_tmpl && $tmpl_type ) {
+                        $pl_label .= ' (' . $tmpl_type . ' template)';
+                    }
+                    foreach ( array_keys( $local_counts ) as $preset ) {
+                        if ( ! isset( $ad_slot_placements[ $preset ] ) ) $ad_slot_placements[ $preset ] = array();
+                        $ad_slot_placements[ $preset ][] = array(
+                            'title'   => $pl_label,
+                            'post_id' => (int) $el_row->post_id,
+                        );
+                    }
                 }
             }
         }
     } catch ( \Throwable $e ) {
-        // Non-fatal — counts stay at zero if the query fails.
+        // Non-fatal — counts and placements stay empty if the query fails.
     }
     set_transient( 'engam_v2_adslot_counts', $ad_slot_counts, 5 * MINUTE_IN_SECONDS );
 }
@@ -210,10 +263,20 @@ if ( is_array( $stk_settings ) ) {
     $m_stacker = $stacker_active > 0 ? 1 : 0;
 }
 
+// Build leaderboard placement rows for the dashboard card (name → position label).
+$lb_card_rows = array();
+foreach ( $lb_detail_rows as $ldr ) {
+    $lb_card_rows[] = $ldr['name'] . ' — ' . $ldr['pos'];
+}
+
+// Merge medium_rect and med_half placements; half_page and med_half placements.
+$mr_placements = array_merge( $ad_slot_placements['medium_rect'] ?? array(), $ad_slot_placements['med_half'] ?? array() );
+$hp_placements = array_merge( $ad_slot_placements['half_page']   ?? array(), $ad_slot_placements['med_half'] ?? array() );
+
 $metric_cards = array(
-    array( 'label' => 'Leaderboards',     'count' => $m_leaderboard, 'link' => 'engam-v2-leaderboards' ),
-    array( 'label' => 'Medium Rectangle', 'count' => $m_medium_rect, 'link' => null ),
-    array( 'label' => 'Half Page',        'count' => $m_half_page,   'link' => null ),
+    array( 'label' => 'Leaderboards',     'count' => $m_leaderboard, 'link' => 'engam-v2-leaderboards', 'rows' => $lb_card_rows ),
+    array( 'label' => 'Medium Rectangle', 'count' => $m_medium_rect, 'link' => null, 'rows' => array_column( $mr_placements, 'title' ) ),
+    array( 'label' => 'Half Page',        'count' => $m_half_page,   'link' => null, 'rows' => array_column( $hp_placements, 'title' ) ),
     array( 'label' => 'Carousel',         'count' => $m_carousel,    'link' => 'engam-v2-carousels' ),
     array( 'label' => 'Masthead',         'count' => $m_masthead,    'link' => 'engam-v2-takeovers' ),
     array( 'label' => 'Wrap Takeover',    'count' => $m_wrap,        'link' => 'engam-v2-takeovers' ),
@@ -234,6 +297,13 @@ $metric_cards = array(
                 <h2><?php echo esc_html( $mc['label'] ); ?></h2>
                 <span class="eg-tag"<?php echo $tag_attr; // phpcs:ignore ?>><?php echo $count; ?> Active</span>
             </div>
+            <?php if ( ! empty( $mc['rows'] ) ) : ?>
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid #eee">
+                <?php foreach ( $mc['rows'] as $row_label ) : ?>
+                <div style="font-size:12px;color:#555;padding:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?php echo esc_html( $row_label ); ?></div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
             <?php if ( $has_link ) : ?>
             <div class="eg-metric-foot"><span class="eg-btn sm">Manage &rarr;</span></div>
             <?php endif; ?>

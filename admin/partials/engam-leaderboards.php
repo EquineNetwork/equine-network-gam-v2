@@ -178,6 +178,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 <tr>
                     <th>Name</th>
                     <th>Position</th>
+                    <th>Used On</th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
@@ -202,6 +203,28 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     } else {
                         $pos_label = 'Header';
                     }
+
+                    // Resolve "Used On" placement detail.
+                    if ( preg_match( '/^(header|footer)_tmpl_(\d+)$/', $pos_val, $upm ) ) {
+                        $upm_post = get_post( (int) $upm[2] );
+                        $used_on  = array(
+                            'type'  => 'template',
+                            'title' => $upm_post ? $upm_post->post_title : '(#' . $upm[2] . ')',
+                            'edit'  => $upm_post ? get_edit_post_link( $upm_post->ID ) : '',
+                            'badge' => $upm[1] === 'header' ? 'header template' : 'footer template',
+                        );
+                    } elseif ( $pos_val === 'midpoint' ) {
+                        $tp      = trim( (string) ( $lb['target_pages'] ?? '' ) );
+                        $tp_post = $tp !== '' ? ( is_numeric( $tp ) ? get_post( (int) $tp ) : get_page_by_path( $tp ) ) : null;
+                        $used_on = $tp_post ? array(
+                            'type'  => 'page',
+                            'title' => $tp_post->post_title,
+                            'edit'  => get_edit_post_link( $tp_post->ID ),
+                            'view'  => get_permalink( $tp_post->ID ),
+                        ) : null;
+                    } else {
+                        $used_on = array( 'type' => 'sitewide' );
+                    }
                 ?>
                 <tr>
                     <td>
@@ -209,6 +232,29 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         <div style="font-family:Consolas,monospace;font-size:12px;color:#555;margin-top:2px"><?php echo esc_html( $lb['id'] ); ?></div>
                     </td>
                     <td><?php echo esc_html( $pos_label ); ?></td>
+                    <td style="font-size:12px;color:#555">
+                        <?php if ( ! $used_on || $used_on['type'] === 'sitewide' ) : ?>
+                            <span style="color:#999">Site-wide</span>
+                        <?php elseif ( $used_on['type'] === 'template' ) : ?>
+                            <div>
+                                <?php if ( ! empty( $used_on['edit'] ) ) : ?>
+                                    <a href="<?php echo esc_url( $used_on['edit'] ); ?>" style="font-weight:700;text-decoration:none;color:#050505"><?php echo esc_html( $used_on['title'] ); ?></a>
+                                <?php else : ?>
+                                    <strong><?php echo esc_html( $used_on['title'] ); ?></strong>
+                                <?php endif; ?>
+                                <em style="color:#888;font-style:normal">(<?php echo esc_html( $used_on['badge'] ); ?>)</em>
+                            </div>
+                        <?php elseif ( $used_on['type'] === 'page' ) : ?>
+                            <div>
+                                <a href="<?php echo esc_url( $used_on['edit'] ); ?>" style="font-weight:700;text-decoration:none;color:#050505"><?php echo esc_html( $used_on['title'] ); ?></a>
+                                <?php if ( ! empty( $used_on['view'] ) ) : ?>
+                                    <a href="<?php echo esc_url( $used_on['view'] ); ?>" target="_blank" rel="noopener" title="View" style="text-decoration:none;margin-left:4px">↗</a>
+                                <?php endif; ?>
+                            </div>
+                        <?php else : ?>
+                            <span style="color:#999">—</span>
+                        <?php endif; ?>
+                    </td>
                     <td><span class="eg-badge <?php echo $is_active ? 'active' : 'inactive'; ?>"><?php echo $is_active ? 'Active' : 'Off'; ?></span></td>
                     <td>
                         <div class="eg-actions-cell">
