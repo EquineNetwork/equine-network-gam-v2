@@ -15,7 +15,16 @@ class Equinenetwork_Gam_V2_Leaderboard {
 	}
 
 	private static function slot_html( $lb, $debug = false ) {
-		$pos      = in_array( ( $lb['position'] ?? '' ), array( 'footer', 'midpoint' ), true ) ? $lb['position'] : 'header';
+		$raw_pos = $lb['position'] ?? 'header';
+		// Normalize to base type for CSS classes; keep raw value for data attribute so JS can target the specific template.
+		if ( preg_match( '/^(header|footer)_tmpl_\d+$/', $raw_pos, $spm ) ) {
+			$pos = $spm[1];
+		} elseif ( in_array( $raw_pos, array( 'footer', 'midpoint' ), true ) ) {
+			$pos = $raw_pos;
+		} else {
+			$pos     = 'header';
+			$raw_pos = 'header';
+		}
 		$slotname = ! empty( $lb['slotname'] ) ? $lb['slotname'] : 'leaderboard';
 
 		$dw = ! empty( $lb['dw'] ) ? (int) $lb['dw'] : 728;
@@ -72,7 +81,7 @@ class Equinenetwork_Gam_V2_Leaderboard {
 
 		return '<div class="engam-leaderboard engam-leaderboard-' . esc_attr( $pos ) . '" '
 			. 'style="' . $band_style . $debug_style . '" '
-			. 'data-engam-leaderboard="' . esc_attr( $pos ) . '"' . $selector_attr . '>'
+			. 'data-engam-leaderboard="' . esc_attr( $raw_pos ) . '"' . $selector_attr . '>'
 			. $debug_bar
 			. '<div' . $attr_str . '></div>'
 			. '</div>';
@@ -108,30 +117,38 @@ class Equinenetwork_Gam_V2_Leaderboard {
 
 		$debug = isset( $_GET['engam_debug'] ) && current_user_can( 'edit_posts' );
 
-		$rendered_header = false;
-		$rendered_footer = false;
-		$has_output      = false;
+		$rendered_positions = array();
+		$has_output         = false;
 
 		foreach ( $leaderboards as $lb ) {
 			if ( ! self::is_active( $lb ) ) continue;
-			$pos = in_array( ( $lb['position'] ?? '' ), array( 'footer', 'midpoint' ), true ) ? $lb['position'] : 'header';
+			$raw_pos = $lb['position'] ?? 'header';
+
+			// Resolve base type so we can detect midpoint regardless of template variant.
+			if ( preg_match( '/^(header|footer)_tmpl_\d+$/', $raw_pos, $rpm ) ) {
+				$pos_type = $rpm[1];
+			} elseif ( in_array( $raw_pos, array( 'footer', 'midpoint' ), true ) ) {
+				$pos_type = $raw_pos;
+			} else {
+				$pos_type = 'header';
+				$raw_pos  = 'header';
+			}
 
 			// Mid-content leaderboards only appear on their targeted page(s);
 			// multiple may exist (one per page), so they are not de-duplicated.
-			if ( $pos === 'midpoint' ) {
+			if ( $pos_type === 'midpoint' ) {
 				if ( ! self::page_matches( $lb['target_pages'] ?? '' ) ) continue;
 				echo self::slot_html( $lb, $debug ); // phpcs:ignore
 				$has_output = true;
 				continue;
 			}
 
-			if ( $pos === 'header' && $rendered_header ) continue;
-			if ( $pos === 'footer' && $rendered_footer ) continue;
+			// Each exact position value (e.g. header_tmpl_123, footer, header) renders at most once.
+			if ( isset( $rendered_positions[ $raw_pos ] ) ) continue;
+			$rendered_positions[ $raw_pos ] = true;
 
 			echo self::slot_html( $lb, $debug ); // phpcs:ignore
 			$has_output = true;
-			if ( $pos === 'header' ) $rendered_header = true;
-			if ( $pos === 'footer' ) $rendered_footer = true;
 		}
 
 		if ( ! $has_output ) return;
@@ -208,24 +225,22 @@ class Equinenetwork_Gam_V2_Leaderboard {
 		insertBeforeMiddleChild(cur,s);
 	}
 	function move(){
-		var hSlots=document.querySelectorAll('[data-engam-leaderboard="header"]');
-		var fSlots=document.querySelectorAll('[data-engam-leaderboard="footer"]');
-		var mSlots=document.querySelectorAll('[data-engam-leaderboard="midpoint"]');
-		if(hSlots.length){
-			var header=document.querySelector('header.site-header,header#masthead,header#site-header,.site-header,header');
-			if(header&&header.parentNode){
-				hSlots.forEach(function(s){header.parentNode.insertBefore(s,header.nextSibling);});
+		var allSlots=document.querySelectorAll('[data-engam-leaderboard]');
+		allSlots.forEach(function(s){
+			var pos=s.getAttribute('data-engam-leaderboard');
+			if(pos==='midpoint'){placeMidpoint(s);return;}
+			var tmplMatch=pos.match(/^(header|footer)_tmpl_(\d+)$/);
+			var posType=tmplMatch?tmplMatch[1]:pos;
+			// For template-specific positions, find the Elementor template wrapper by its numeric ID class.
+			var tmplEl=tmplMatch?document.querySelector('.elementor-'+tmplMatch[2]):null;
+			if(posType==='header'){
+				var headerEl=tmplEl?(tmplEl.closest('header')||tmplEl.parentNode):document.querySelector('header.site-header,header#masthead,header#site-header,.site-header,header');
+				if(headerEl&&headerEl.parentNode){headerEl.parentNode.insertBefore(s,headerEl.nextSibling);}
+			}else if(posType==='footer'){
+				var footerEl=tmplEl?(tmplEl.closest('footer')||tmplEl):document.querySelector('footer.site-footer,footer#colophon,footer#site-footer,.site-footer,footer');
+				if(footerEl){footerEl.insertBefore(s,footerEl.firstChild);}
 			}
-		}
-		if(fSlots.length){
-			var footer=document.querySelector('footer.site-footer,footer#colophon,footer#site-footer,.site-footer,footer');
-			if(footer){
-				fSlots.forEach(function(s){footer.insertBefore(s,footer.firstChild);});
-			}
-		}
-		if(mSlots.length){
-			mSlots.forEach(function(s){placeMidpoint(s);});
-		}
+		});
 	}
 	if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',move);}else{move();}
 })();
