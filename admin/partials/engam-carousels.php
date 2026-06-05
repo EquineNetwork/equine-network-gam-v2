@@ -58,7 +58,7 @@ $engam_car_defaults = array(
 
 // ---- Handle POST ----
 if ( isset( $_POST['engam_v2_carousel_nonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['engam_v2_carousel_nonce'] ) ), 'engam_v2_carousel_save' ) ) {
-    if ( ! current_user_can( 'edit_posts' ) ) wp_die( -1 );
+    if ( ! current_user_can( 'edit_others_posts' ) ) wp_die( -1 );
 
     // ---- Delete ----
     if ( isset( $_POST['engam_carousel_delete'] ) ) {

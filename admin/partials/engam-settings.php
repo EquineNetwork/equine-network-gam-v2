@@ -1,5 +1,69 @@
 <?php if ( ! defined( 'WPINC' ) ) die;
 
+/**
+ * One-time migration: copy legacy ACF sponsor IDs into the plugin's native
+ * `_engam_v2_sponsor_id` post meta so assignments survive deletion of the ACF
+ * fields. Reads post meta directly (not get_field) so it still works after the
+ * ACF field definitions are removed. Never overwrites an existing plugin value,
+ * and is safe to run repeatedly.
+ *
+ * @param bool $write When false, performs a dry run (counts only, no changes).
+ * @return array{candidates:int,migrated:int,skipped_existing:int,samples:array}
+ */
+if ( ! function_exists( 'engam_v2_migrate_acf_sponsors' ) ) {
+    function engam_v2_migrate_acf_sponsors( $write = false ) {
+        global $wpdb;
+        $result = array( 'candidates' => 0, 'migrated' => 0, 'skipped_existing' => 0, 'samples' => array() );
+
+        // ACF stores Select values under the field name as the post meta key.
+        // Match the front-end priority: sponlineitemid wins over sponsorship_id.
+        $rows = $wpdb->get_results(
+            "SELECT post_id, meta_key, meta_value
+               FROM {$wpdb->postmeta}
+              WHERE meta_key IN ( 'sponlineitemid', 'sponsorship_id' )
+                AND meta_value <> ''"
+        );
+        if ( ! is_array( $rows ) ) return $result;
+
+        $by_post = array();
+        foreach ( $rows as $r ) {
+            $by_post[ (int) $r->post_id ][ $r->meta_key ] = $r->meta_value;
+        }
+
+        foreach ( $by_post as $pid => $vals ) {
+            $acf_value = sanitize_text_field( $vals['sponlineitemid'] ?? $vals['sponsorship_id'] ?? '' );
+            if ( $acf_value === '' ) continue;
+            $result['candidates']++;
+
+            $existing = get_post_meta( $pid, '_engam_v2_sponsor_id', true );
+            if ( $existing !== '' && $existing !== false ) {
+                $result['skipped_existing']++;
+                continue;
+            }
+
+            if ( $write ) {
+                update_post_meta( $pid, '_engam_v2_sponsor_id', $acf_value );
+            }
+            $result['migrated']++;
+
+            if ( count( $result['samples'] ) < 20 ) {
+                $p = get_post( $pid );
+                $result['samples'][] = array(
+                    'id'    => $pid,
+                    'title' => $p ? $p->post_title : '(unknown #' . $pid . ')',
+                    'value' => $acf_value,
+                    'type'  => $p ? $p->post_type : '',
+                );
+            }
+        }
+
+        return $result;
+    }
+}
+
+$migration_result = null;
+$migration_ran    = false;
+
 $gam_id               = get_option( 'equinenetwork_gam_v2_id', '' );
 $id_active            = ! empty( $gam_id );
 $has_credentials      = ! empty( get_option( 'equinenetwork_gam_v2_credentials', '' ) );
@@ -27,7 +91,7 @@ if ( isset( $_POST['engam_v2_settings_nonce'] ) && wp_verify_nonce( sanitize_tex
         update_option( 'engam_v2_ms_tenant_id',     sanitize_text_field( wp_unslash( $_POST['engam_v2_ms_tenant_id']     ?? '' ) ) );
         update_option( 'engam_v2_ms_client_id',     sanitize_text_field( wp_unslash( $_POST['engam_v2_ms_client_id']     ?? '' ) ) );
         update_option( 'engam_v2_ms_file_url',      esc_url_raw( wp_unslash( $_POST['engam_v2_ms_file_url']              ?? '' ) ) );
-        update_option( 'engam_v2_ms_sheet_name',    sanitize_text_field( wp_unslash( $_POST['engam_v2_ms_sheet_name']    ?? 'HR' ) ) );
+        update_option( 'engam_v2_ms_sheet_name',    sanitize_text_field( wp_unslash( $_POST['engam_v2_ms_sheet_name']    ?? '' ) ) );  // blank until the admin picks a tab
         // Only overwrite the secret if a new value was submitted (preserve existing on blank).
         $new_secret = sanitize_text_field( wp_unslash( $_POST['engam_v2_ms_client_secret'] ?? '' ) );
         if ( $new_secret !== '' ) {
@@ -37,6 +101,17 @@ if ( isset( $_POST['engam_v2_settings_nonce'] ) && wp_verify_nonce( sanitize_tex
         delete_transient( 'engam_v2_graph_token' );
         delete_transient( 'engam_v2_ms_worksheets' );
         $notice = 'SharePoint connection saved.';
+    }
+    if ( current_user_can( 'manage_options' ) && 'acf_migrate' === $form ) {
+        $migration_ran    = isset( $_POST['acf_migrate_confirm'] );
+        $migration_result = engam_v2_migrate_acf_sponsors( $migration_ran );
+        if ( $migration_ran ) {
+            $notice = sprintf(
+                '%d post(s) migrated from ACF. %d already had a plugin sponsor ID and were left unchanged.',
+                (int) $migration_result['migrated'],
+                (int) $migration_result['skipped_existing']
+            );
+        }
     }
 
 }
@@ -48,12 +123,19 @@ $ms_tenant     = get_option( 'engam_v2_ms_tenant_id', '' );
 $ms_client     = get_option( 'engam_v2_ms_client_id', '' );
 $ms_secret_set = ! empty( get_option( 'engam_v2_ms_client_secret', '' ) );
 $ms_file_url   = get_option( 'engam_v2_ms_file_url', '' );
-$ms_sheet      = get_option( 'engam_v2_ms_sheet_name', 'HR' );
+$ms_sheet      = get_option( 'engam_v2_ms_sheet_name', '' );  // no site-specific default — the 'HR' placeholder hints the format
 $ms_configured = $ms_tenant && $ms_client && $ms_secret_set && $ms_file_url;
 $ms_link_only  = ! $ms_configured && $ms_file_url;     // share-link path (no Azure)
 $ms_active     = $ms_configured || $ms_link_only;
 // Default source: show MS if already configured, else CSV if CSV url exists, else MS (new setup).
 $sponsor_source = $ms_active ? 'ms' : ( $sheets_configured ? 'csv' : 'ms' );
+
+// Count posts still carrying legacy ACF sponsor IDs (for the migration card).
+global $wpdb;
+$acf_candidate_count = (int) $wpdb->get_var(
+    "SELECT COUNT( DISTINCT post_id ) FROM {$wpdb->postmeta}
+      WHERE meta_key IN ( 'sponlineitemid', 'sponsorship_id' ) AND meta_value <> ''"
+);
 
 include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 ?>
@@ -345,6 +427,67 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
     </div>
 
 
+</div>
+
+<!-- ACF SPONSOR ID MIGRATION -->
+<div class="eg-card" style="margin-top:18px">
+    <div class="eg-head">
+        <div>
+            <h2>Migrate Sponsor IDs from ACF</h2>
+            <p>One-time merge: copy sponsor IDs assigned with the legacy ACF fields (<code>sponlineitemid</code> / <code>sponsorship_id</code>) into this plugin, so they keep working after you delete those ACF fields.</p>
+        </div>
+        <span class="eg-tag"<?php echo $acf_candidate_count > 0 ? '' : ' style="background:#eee;color:#999"'; ?>><?php echo (int) $acf_candidate_count; ?> found</span>
+    </div>
+    <div class="eg-body">
+        <?php if ( $acf_candidate_count === 0 && ! $migration_result ) : ?>
+            <p style="font-size:13px;color:#555;margin:0">No posts with legacy ACF sponsor IDs were found — nothing to migrate.</p>
+        <?php else : ?>
+            <p class="eg-hint" style="margin:0 0 14px">
+                Existing assignments are never overwritten — only posts without an EN Sponsor ID already set are updated. Run <strong>Preview</strong> first to see exactly what will change; it's safe to run more than once.
+            </p>
+            <form method="post" action="">
+                <?php wp_nonce_field( 'engam_v2_settings_save', 'engam_v2_settings_nonce' ); ?>
+                <input type="hidden" name="engam_form" value="acf_migrate">
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    <button type="submit" class="eg-btn dark" style="border-color:#111">Preview Changes</button>
+                    <button type="submit" name="acf_migrate_confirm" value="1" class="eg-btn"
+                        onclick="return confirm('Copy ACF sponsor IDs into the plugin for every post that does not already have one? Safe to re-run.')">Run Migration Now</button>
+                </div>
+            </form>
+
+            <?php if ( $migration_result ) : ?>
+            <div style="margin-top:16px;border:1px solid #deded8;border-radius:6px;padding:14px;background:#fafaf8">
+                <strong style="font-size:13px;display:block;margin-bottom:8px">
+                    <?php echo $migration_ran ? 'Migration complete' : 'Preview — no changes made yet'; ?>
+                </strong>
+                <div style="font-size:13px;color:#333;margin-bottom:10px">
+                    <?php echo (int) $migration_result['candidates']; ?> post(s) with ACF sponsor IDs &middot;
+                    <strong><?php echo (int) $migration_result['migrated']; ?></strong> <?php echo $migration_ran ? 'migrated' : 'will be migrated'; ?> &middot;
+                    <?php echo (int) $migration_result['skipped_existing']; ?> already had a plugin value (left unchanged)
+                </div>
+                <?php if ( ! empty( $migration_result['samples'] ) ) : ?>
+                <table class="eg-table" style="margin-top:6px">
+                    <thead><tr><th>Post</th><th>Sponsor ID</th></tr></thead>
+                    <tbody>
+                        <?php foreach ( $migration_result['samples'] as $s ) : ?>
+                        <tr>
+                            <td>
+                                <a href="<?php echo esc_url( get_edit_post_link( $s['id'] ) ); ?>" style="font-weight:700;text-decoration:none;color:#050505"><?php echo esc_html( $s['title'] ); ?></a>
+                                <span style="color:#888;font-size:11px"> &middot; #<?php echo (int) $s['id']; ?><?php echo $s['type'] ? ' &middot; ' . esc_html( $s['type'] ) : ''; ?></span>
+                            </td>
+                            <td><code style="font-size:12px"><?php echo esc_html( $s['value'] ); ?></code></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php if ( (int) $migration_result['migrated'] > count( $migration_result['samples'] ) ) : ?>
+                <p class="eg-hint" style="margin:8px 0 0">Showing first <?php echo count( $migration_result['samples'] ); ?> of <?php echo (int) $migration_result['migrated']; ?>.</p>
+                <?php endif; ?>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+        <?php endif; ?>
+    </div>
 </div>
 
 </div><!-- .eg-content -->

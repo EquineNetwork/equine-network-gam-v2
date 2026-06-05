@@ -8,7 +8,7 @@ $edit_id = isset( $_GET['edit_lb'] ) ? sanitize_text_field( wp_unslash( $_GET['e
 
 // ---- Handle POST ----
 if ( isset( $_POST['engam_v2_lb_nonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['engam_v2_lb_nonce'] ) ), 'engam_v2_lb_save' ) ) {
-    if ( ! current_user_can( 'edit_posts' ) ) wp_die( -1 );
+    if ( ! current_user_can( 'edit_others_posts' ) ) wp_die( -1 );
 
     $action = isset( $_POST['engam_lb_action'] ) ? sanitize_text_field( wp_unslash( $_POST['engam_lb_action'] ) ) : '';
 
