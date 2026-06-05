@@ -322,13 +322,11 @@ googletag.cmd.push(function() {
 								window.addEventListener( 'resize', scaleMasthead );
 							} else if ( !isMasthead ) {
 								// Fixed-size content ad (medium rectangle, half page, etc).
-								// A 300px-wide creative dropped into a sub-300px column
-								// overflows and "flies off the side" of the layout. Scale
-								// the creative to fit its column using the same transform
-								// technique the masthead uses. By default we only scale
-								// DOWN (never blow a 300x250 up into a blurry billboard in
-								// a wide content column); data-fluid="1" opts a slot into
-								// scaling UP to fill its column too (for sidebar rails).
+								// A 300px creative in a narrow column overflows ("flies off
+								// the side"); in a wide column it should render at its native
+								// width. We scale with transform (the masthead technique) —
+								// DOWN to fit a narrow column, and only UP to fill the column
+								// when the slot opts in via data-fluid="1".
 								var adW   = event.size[0];
 								var adH   = event.size[1];
 								var sizer = filledSlot.parentNode;          // the <div align="..."> wrapper
@@ -336,27 +334,66 @@ googletag.cmd.push(function() {
 								var align = (wrap && wrap.dataset.align) ? wrap.dataset.align : 'center';
 								var fluid = !!(wrap && wrap.dataset.fluid);
 
-								filledSlot.style.transformOrigin = 'top left';
-								filledSlot.style.width  = adW + 'px';
-								filledSlot.style.height = adH + 'px';
-
-								var scaleContentAd = function() {
-									var avail = wrap ? wrap.clientWidth : adW;
-									if ( avail <= 0 ) avail = adW;
-									var scale = fluid ? ( avail / adW ) : Math.min( 1, avail / adW );
-									filledSlot.style.transform = 'scale(' + scale + ')';
-									if ( sizer ) {
-										// Sizer takes the scaled footprint so the column height
-										// collapses to the visible ad and alignment works.
-										sizer.style.width  = Math.round( adW * scale ) + 'px';
-										sizer.style.height = Math.round( adH * scale ) + 'px';
-										if ( align === 'left' )       sizer.style.margin = '0 auto 0 0';
-										else if ( align === 'right' ) sizer.style.margin = '0 0 0 auto';
-										else                          sizer.style.margin = '0 auto';
+								// Carousels and in-content stackers manage their own layout —
+								// keep the simple fixed-size center and skip column scaling.
+								var special = wrap && ( (wrap.closest && wrap.closest('.engam-car')) || (wrap.classList && wrap.classList.contains('engam-stacker')) );
+								if ( special ) {
+									filledSlot.style.width     = adW + 'px';
+									filledSlot.style.maxWidth  = adW + 'px';
+									filledSlot.style.height    = adH + 'px';
+									filledSlot.style.maxHeight = adH + 'px';
+									if ( !wrap || align === 'center' ) {
+										filledSlot.style.display = 'block';
+										filledSlot.style.margin  = '0 auto';
 									}
-								};
-								scaleContentAd();
-								window.addEventListener( 'resize', scaleContentAd );
+								} else {
+									filledSlot.style.transformOrigin = 'top left';
+									filledSlot.style.width  = adW + 'px';
+									filledSlot.style.height = adH + 'px';
+
+									// Measure the column from a stable, full-width block ancestor.
+									// The .equinenetworkad wrapper holds an inline-block iframe,
+									// so it shrink-wraps to the ad — measuring it would feed a
+									// too-small width back into the scale and lock the creative
+									// smaller than its column, leaving empty space around it.
+									// Elementor's widget container is block-level and always
+									// spans the column, so it gives the true available width.
+									var availWidth = function() {
+										var box = wrap;
+										while ( box && box.parentElement ) {
+											box = box.parentElement;
+											if ( box.classList && (
+												box.classList.contains('elementor-widget-container') ||
+												box.classList.contains('elementor-widget') ||
+												box.classList.contains('elementor-column') ||
+												box.classList.contains('e-con-inner') ||
+												box.classList.contains('e-con')
+											) && box.clientWidth > 0 ) {
+												return box.clientWidth;
+											}
+										}
+										return ( wrap && wrap.clientWidth > 0 ) ? wrap.clientWidth : adW;
+									};
+
+									var scaleContentAd = function() {
+										var avail = availWidth();
+										// Native width when there's room; only shrink to fit a
+										// narrower column. data-fluid lets a slot fill wider.
+										var scale = fluid ? ( avail / adW ) : Math.min( 1, avail / adW );
+										filledSlot.style.transform = ( scale === 1 ) ? 'none' : ( 'scale(' + scale + ')' );
+										if ( sizer ) {
+											// Sizer takes the scaled footprint so the column
+											// height collapses and alignment works.
+											sizer.style.width  = Math.round( adW * scale ) + 'px';
+											sizer.style.height = Math.round( adH * scale ) + 'px';
+											if ( align === 'left' )       sizer.style.margin = '0 auto 0 0';
+											else if ( align === 'right' ) sizer.style.margin = '0 0 0 auto';
+											else                          sizer.style.margin = '0 auto';
+										}
+									};
+									scaleContentAd();
+									window.addEventListener( 'resize', scaleContentAd );
+								}
 							}
 							var modal = document.getElementById('adModal');
 							if ( modal && filledSlot.querySelector('iframe') ) modal.style.display = 'block';
