@@ -2,10 +2,10 @@
 // Test comment added via Claude Code on 2026-06-03.
 /**
  * @wordpress-plugin
- * Plugin Name:       EquineNetwork GAM v2
+ * Plugin Name:       Equine Network GAM v2
  * Description:       Inject Google Ad Manager tag and generate ads dynamically. Includes Elementor widgets, scheduled ads, child ad unit support, and fluid ad sizes.
  * Version:           3.3.71
- * Author:            Whitney Mitchell
+ * Author:            Equine Network
  * Author URI:        https://equinenetwork.com
  * License:           GPL-2.0+
  * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
