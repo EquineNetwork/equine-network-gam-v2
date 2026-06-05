@@ -44,7 +44,8 @@
 #engam-v2-wrap .eg-metric-top h2{font-size:20px;text-transform:uppercase;letter-spacing:-1px;margin:0;line-height:1.1}
 #engam-v2-wrap .eg-metric-foot{padding:0 24px 18px;margin-top:auto}
 #engam-v2-wrap .eg-metric-row{display:block;font-size:12px;color:#555;padding:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:none}
-#engam-v2-wrap a.eg-metric-row:hover{color:#050505;text-decoration:underline}
+#engam-v2-wrap a.eg-metric-row{color:#2271b1}
+#engam-v2-wrap a.eg-metric-row:hover{color:#135e96;text-decoration:underline}
 #engam-v2-wrap .eg-body{padding:24px}
 #engam-v2-wrap .eg-notice{padding:12px 18px;margin-bottom:18px;font-weight:700;font-size:13px;background:#d0ff00;color:#111;border-left:6px solid #050505}
 #engam-v2-wrap .eg-add-form{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;padding:18px 24px;background:#f5f5f2;border-bottom:1px solid #deded8}
