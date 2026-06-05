@@ -168,12 +168,10 @@ class Equinenetwork_Gam_V2_Metabox {
 
 		// The plugin's own value wins; fall back to the raw legacy ACF meta (read
 		// directly so it still shows after the ACF field itself is deleted).
-		$val    = get_post_meta( $post_id, '_engam_v2_sponsor_id', true );
-		$legacy = false;
+		$val = get_post_meta( $post_id, '_engam_v2_sponsor_id', true );
 		if ( $val === '' || $val === false ) {
 			$val = get_post_meta( $post_id, 'sponlineitemid', true );
 			if ( $val === '' || $val === false ) $val = get_post_meta( $post_id, 'sponsorship_id', true );
-			$legacy = ( $val !== '' && $val !== false );
 		}
 
 		if ( $val === '' || $val === false ) {
@@ -182,8 +180,5 @@ class Equinenetwork_Gam_V2_Metabox {
 		}
 
 		echo '<code style="font-size:12px;background:#f3f3ee;border:1px solid #e3e3dc;padding:2px 6px;border-radius:3px">' . esc_html( $val ) . '</code>';
-		if ( $legacy ) {
-			echo '<div style="font-size:10px;color:#b26a00;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-top:3px">Legacy ACF — not migrated</div>';
-		}
 	}
 }
