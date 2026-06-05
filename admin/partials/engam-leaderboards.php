@@ -17,11 +17,21 @@ if ( isset( $_POST['engam_v2_lb_nonce'] ) && wp_verify_nonce( sanitize_text_fiel
         $is_new = empty( $lb_id );
         if ( $is_new ) $lb_id = uniqid( 'lb_' );
 
+        $pos_raw  = sanitize_text_field( wp_unslash( $_POST['engam_lb_position'] ?? '' ) );
+        $position = 'header';
+        if ( in_array( $pos_raw, array( 'header', 'footer', 'midpoint' ), true ) ) {
+            $position = $pos_raw;
+        } elseif ( preg_match( '/^(header|footer)_tmpl_(\d+)$/', $pos_raw, $pm ) ) {
+            $tmpl_meta_type = get_post_meta( (int) $pm[2], '_elementor_template_type', true );
+            if ( $tmpl_meta_type === $pm[1] ) {
+                $position = $pos_raw;
+            }
+        }
+
         $record = array(
             'id'       => $lb_id,
             'name'     => sanitize_text_field( wp_unslash( $_POST['engam_lb_name'] ?? '' ) ),
-            'position' => in_array( $_POST['engam_lb_position'] ?? '', array( 'header', 'footer', 'midpoint' ), true )
-                              ? sanitize_text_field( wp_unslash( $_POST['engam_lb_position'] ) ) : 'header',
+            'position' => $position,
             'target_pages'    => sanitize_text_field( wp_unslash( $_POST['engam_lb_target_pages'] ?? '' ) ),
             'target_selector' => sanitize_text_field( wp_unslash( $_POST['engam_lb_target_selector'] ?? '' ) ),
             'slotname' => 'leaderboard',
@@ -94,6 +104,33 @@ if ( $kit_id ) {
     }
 }
 
+// Pull all published Elementor header/footer templates for the position dropdown.
+$elementor_header_tmpls = array();
+$elementor_footer_tmpls = array();
+if ( post_type_exists( 'elementor_library' ) ) {
+    $all_hf_tmpls = get_posts( array(
+        'post_type'      => 'elementor_library',
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+        'orderby'        => 'title',
+        'order'          => 'ASC',
+        'meta_query'     => array( array(
+            'key'     => '_elementor_template_type',
+            'value'   => array( 'header', 'footer' ),
+            'compare' => 'IN',
+        ) ),
+    ) );
+    foreach ( $all_hf_tmpls as $tmpl ) {
+        $tmpl_type = get_post_meta( $tmpl->ID, '_elementor_template_type', true );
+        if ( $tmpl_type === 'header' ) {
+            $elementor_header_tmpls[] = $tmpl;
+        } elseif ( $tmpl_type === 'footer' ) {
+            $elementor_footer_tmpls[] = $tmpl;
+        }
+    }
+}
+$has_elementor_hf = ! empty( $elementor_header_tmpls ) || ! empty( $elementor_footer_tmpls );
+
 $takeover_conflict = false; // Leaderboards always display regardless of active takeovers.
 
 include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
@@ -149,7 +186,11 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 <?php foreach ( $leaderboards as $lb ) :
                     $is_active = ! empty( $lb['active'] );
                     $pos_val   = $lb['position'] ?? 'header';
-                    if ( $pos_val === 'footer' ) {
+                    if ( preg_match( '/^(header|footer)_tmpl_(\d+)$/', $pos_val, $lpm ) ) {
+                        $lpm_post   = get_post( (int) $lpm[2] );
+                        $lpm_type   = $lpm[1] === 'header' ? 'Header' : 'Footer';
+                        $pos_label  = $lpm_type . ': ' . ( $lpm_post ? esc_html( $lpm_post->post_title ) : '#' . $lpm[2] );
+                    } elseif ( $pos_val === 'footer' ) {
                         $pos_label = 'Footer';
                     } elseif ( $pos_val === 'midpoint' ) {
                         $pos_label = 'Half Page';
@@ -230,8 +271,23 @@ if ( $edit_id ) :
                 <div class="eg-settings-field">
                     <label for="engam-lb-position">Position</label>
                     <select class="eg-input" name="engam_lb_position" id="engam-lb-position">
-                        <option value="header" <?php selected( $f['position'] ?? 'header', 'header' ); ?>>Header — below the site nav</option>
-                        <option value="footer" <?php selected( $f['position'] ?? 'header', 'footer' ); ?>>Footer — top of the site footer</option>
+                        <?php if ( $has_elementor_hf ) : ?>
+                            <optgroup label="Headers">
+                                <?php foreach ( $elementor_header_tmpls as $tmpl ) : ?>
+                                    <option value="header_tmpl_<?php echo esc_attr( $tmpl->ID ); ?>" <?php selected( $f['position'] ?? 'header', 'header_tmpl_' . $tmpl->ID ); ?>><?php echo esc_html( $tmpl->post_title ?: '(untitled)' ); ?></option>
+                                <?php endforeach; ?>
+                                <option value="header" <?php selected( $f['position'] ?? 'header', 'header' ); ?>>Generic Header — below the site nav</option>
+                            </optgroup>
+                            <optgroup label="Footers">
+                                <?php foreach ( $elementor_footer_tmpls as $tmpl ) : ?>
+                                    <option value="footer_tmpl_<?php echo esc_attr( $tmpl->ID ); ?>" <?php selected( $f['position'] ?? 'header', 'footer_tmpl_' . $tmpl->ID ); ?>><?php echo esc_html( $tmpl->post_title ?: '(untitled)' ); ?></option>
+                                <?php endforeach; ?>
+                                <option value="footer" <?php selected( $f['position'] ?? 'header', 'footer' ); ?>>Generic Footer — top of the site footer</option>
+                            </optgroup>
+                        <?php else : ?>
+                            <option value="header" <?php selected( $f['position'] ?? 'header', 'header' ); ?>>Header — below the site nav</option>
+                            <option value="footer" <?php selected( $f['position'] ?? 'header', 'footer' ); ?>>Footer — top of the site footer</option>
+                        <?php endif; ?>
                         <option value="midpoint" <?php selected( $f['position'] ?? 'header', 'midpoint' ); ?>>Half Page — halfway down a specific page</option>
                     </select>
                     <p class="eg-hint">Header/Footer show on every page. Half Page shows only on the page(s) you choose below.</p>
