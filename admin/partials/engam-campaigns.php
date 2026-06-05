@@ -1,8 +1,10 @@
 <?php if ( ! defined( 'WPINC' ) ) die;
 
-$api         = new Equinenetwork_Gam_V2_API();
-$sheet_url   = get_option( 'engam_v2_sheet_csv_url', '' );
-$sponsors    = $api->get_sponsor_options();
+$api          = new Equinenetwork_Gam_V2_API();
+$sheet_url    = get_option( 'engam_v2_sheet_csv_url', '' );
+$ms_file_url  = get_option( 'engam_v2_ms_file_url', '' );
+$is_connected = $sheet_url || $ms_file_url;
+$sponsors     = $api->get_sponsor_options();
 $active_count = count( $sponsors );
 
 include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
@@ -28,7 +30,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
     <div class="eg-head">
         <div>
             <h2>Sponsor ID's</h2>
-            <p>Pulled live from your connected Google Sheet. Only rows marked <strong>Active</strong> appear here and in the "Lock to Sponsor" dropdowns.</p>
+            <p>Pulled live from your connected spreadsheet. Only rows marked <strong>Active</strong> appear here and in the "Lock to Sponsor" dropdowns.</p>
         </div>
         <div style="display:flex;gap:10px;align-items:center">
             <span class="eg-tag"><?php echo esc_html( $active_count ); ?> Active</span>
@@ -36,10 +38,10 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         </div>
     </div>
 
-    <?php if ( empty( $sheet_url ) ) : ?>
+    <?php if ( ! $is_connected ) : ?>
         <div class="eg-empty">
-            <strong>No Google Sheet connected.</strong>
-            Go to <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-settings' ) ); ?>">Settings</a> and paste your published CSV URL to populate this list.
+            <strong>No spreadsheet connected.</strong>
+            Go to <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-settings' ) ); ?>">Settings</a> and connect a SharePoint sheet or paste a published CSV URL to populate this list.
         </div>
     <?php elseif ( empty( $sponsors ) ) : ?>
         <div class="eg-empty">
