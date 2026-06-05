@@ -762,6 +762,21 @@ class Equinenetwork_Gam_V2_API {
 	 * Only rows where Status = "Active" are included.
 	 */
 	public function get_sponsor_options( $force_refresh = false ) {
+		$sponsors = $this->fetch_sheet_sponsor_options( $force_refresh );
+
+		// Append manually-entered sponsors, skipping IDs already in the sheet.
+		$manual      = get_option( 'engam_v2_manual_sponsors', array() );
+		$existing_ids = array_column( $sponsors, 'id' );
+		foreach ( (array) $manual as $m ) {
+			if ( ! empty( $m['id'] ) && ! in_array( $m['id'], $existing_ids, true ) ) {
+				$sponsors[] = array( 'id' => $m['id'], 'name' => $m['name'] );
+			}
+		}
+
+		return $sponsors;
+	}
+
+	private function fetch_sheet_sponsor_options( $force_refresh = false ) {
 		// Microsoft Graph (full Azure app) takes priority when configured.
 		if ( $this->is_ms_configured() ) {
 			return $this->get_ms_sponsor_options( $force_refresh );
