@@ -277,25 +277,29 @@ class Equinenetwork_Gam_V2_Widget extends \Elementor\Widget_Base {
 			}
 		}
 
+		// Read every key defensively. When the sponsor sheet returns <= 1 option the
+		// `sponsor_id` control is registered as RAW_HTML (which stores no value), so
+		// $s['sponsor_id'] is absent — accessing it bare throws "Undefined array key"
+		// and fatals on hosts that escalate warnings. Default everything.
 		if ( $use_primary ) {
 			$preset_key = $s['scheduled_preset'];
-			$sponsor_id = ! empty( $s['scheduled_sponsor_id'] ) ? $s['scheduled_sponsor_id'] : $s['sponsor_id'];
+			$sponsor_id = ! empty( $s['scheduled_sponsor_id'] ) ? $s['scheduled_sponsor_id'] : ( $s['sponsor_id'] ?? '' );
 		} else {
-			$preset_key = $s['ad_preset'];
-			$sponsor_id = $s['sponsor_id'];
+			$preset_key = $s['ad_preset'] ?? 'leaderboard';
+			$sponsor_id = $s['sponsor_id'] ?? '';
 		}
 
 		return array(
 			'preset_key' => $preset_key,
 			'sponsor_id' => $sponsor_id,
-			'align'      => $s['ad_align'],
-			'fluid'      => isset( $s['fluid_width'] ) ? $s['fluid_width'] : '',
-			'is_popup'   => $s['is_popup'],
-			'slot_name'  => $s['slot_name'],
-			'custom_dw'  => $s['custom_desktop_width'],
-			'custom_dh'  => $s['custom_desktop_height'],
-			'custom_mw'  => $s['custom_mobile_width'],
-			'custom_mh'  => $s['custom_mobile_height'],
+			'align'      => $s['ad_align'] ?? 'center',
+			'fluid'      => $s['fluid_width'] ?? '',
+			'is_popup'   => $s['is_popup'] ?? '',
+			'slot_name'  => $s['slot_name'] ?? '',
+			'custom_dw'  => $s['custom_desktop_width'] ?? '',
+			'custom_dh'  => $s['custom_desktop_height'] ?? '',
+			'custom_mw'  => $s['custom_mobile_width'] ?? '',
+			'custom_mh'  => $s['custom_mobile_height'] ?? '',
 		);
 	}
 
