@@ -14,14 +14,15 @@
 if ( ! function_exists( 'engam_v2_migrate_acf_sponsors' ) ) {
     function engam_v2_migrate_acf_sponsors( $write = false ) {
         global $wpdb;
+        if ( $write ) { @set_time_limit( 0 ); }  // large sites: avoid timing out mid-write
+
         $result = array(
             'candidates' => 0, 'migrated' => 0, 'skipped_existing' => 0,
             'posts' => 0, 'terms' => 0, 'samples' => array(),
         );
 
-        // ACF stores Select values under the field name as the meta key, on both
-        // postmeta and termmeta. Match the front-end priority: sponlineitemid
-        // wins over sponsorship_id.
+        // Group raw meta rows by object id, keeping both ACF keys so we can apply
+        // the front-end priority: sponlineitemid wins over sponsorship_id.
         $group = function( $rows ) {
             $by = array();
             if ( is_array( $rows ) ) {
@@ -33,18 +34,34 @@ if ( ! function_exists( 'engam_v2_migrate_acf_sponsors' ) ) {
         };
 
         // --- Posts / pages ---
-        $post_rows = $wpdb->get_results(
-            "SELECT post_id AS obj_id, meta_key, meta_value
-               FROM {$wpdb->postmeta}
-              WHERE meta_key IN ( 'sponlineitemid', 'sponsorship_id' ) AND meta_value <> ''"
-        );
-        foreach ( $group( $post_rows ) as $pid => $vals ) {
+        // Join wp_posts to skip revisions, auto-drafts, and trash — ACF copies
+        // field values onto revisions, which would otherwise inflate the count
+        // massively and waste writes on non-served content.
+        $post_cands = $group( $wpdb->get_results(
+            "SELECT m.post_id AS obj_id, m.meta_key, m.meta_value
+               FROM {$wpdb->postmeta} m
+               INNER JOIN {$wpdb->posts} p ON p.ID = m.post_id
+              WHERE m.meta_key IN ( 'sponlineitemid', 'sponsorship_id' ) AND m.meta_value <> ''
+                AND p.post_type <> 'revision'
+                AND p.post_status IN ( 'publish', 'private', 'draft', 'pending', 'future' )"
+        ) );
+        // Bulk lookup of posts that already have a plugin value, so we don't run a
+        // per-row get_post_meta() across thousands of posts (which can time out).
+        $post_has = array();
+        if ( $post_cands ) {
+            $ids = implode( ',', array_map( 'intval', array_keys( $post_cands ) ) );
+            foreach ( (array) $wpdb->get_col(
+                "SELECT post_id FROM {$wpdb->postmeta}
+                  WHERE meta_key = '_engam_v2_sponsor_id' AND meta_value <> '' AND post_id IN ( {$ids} )"
+            ) as $had ) {
+                $post_has[ (int) $had ] = true;
+            }
+        }
+        foreach ( $post_cands as $pid => $vals ) {
             $acf_value = sanitize_text_field( $vals['sponlineitemid'] ?? $vals['sponsorship_id'] ?? '' );
             if ( $acf_value === '' ) continue;
             $result['candidates']++;
-
-            $existing = get_post_meta( $pid, '_engam_v2_sponsor_id', true );
-            if ( $existing !== '' && $existing !== false ) { $result['skipped_existing']++; continue; }
+            if ( isset( $post_has[ (int) $pid ] ) ) { $result['skipped_existing']++; continue; }
 
             if ( $write ) update_post_meta( $pid, '_engam_v2_sponsor_id', $acf_value );
             $result['migrated']++;
@@ -62,19 +79,27 @@ if ( ! function_exists( 'engam_v2_migrate_acf_sponsors' ) ) {
             }
         }
 
-        // --- Categories / tags / other taxonomies ---
-        $term_rows = $wpdb->get_results(
+        // --- Categories / tags / other taxonomies (no revisions to worry about) ---
+        $term_cands = $group( $wpdb->get_results(
             "SELECT term_id AS obj_id, meta_key, meta_value
                FROM {$wpdb->termmeta}
               WHERE meta_key IN ( 'sponlineitemid', 'sponsorship_id' ) AND meta_value <> ''"
-        );
-        foreach ( $group( $term_rows ) as $tid => $vals ) {
+        ) );
+        $term_has = array();
+        if ( $term_cands ) {
+            $ids = implode( ',', array_map( 'intval', array_keys( $term_cands ) ) );
+            foreach ( (array) $wpdb->get_col(
+                "SELECT term_id FROM {$wpdb->termmeta}
+                  WHERE meta_key = '_engam_v2_sponsor_id' AND meta_value <> '' AND term_id IN ( {$ids} )"
+            ) as $had ) {
+                $term_has[ (int) $had ] = true;
+            }
+        }
+        foreach ( $term_cands as $tid => $vals ) {
             $acf_value = sanitize_text_field( $vals['sponlineitemid'] ?? $vals['sponsorship_id'] ?? '' );
             if ( $acf_value === '' ) continue;
             $result['candidates']++;
-
-            $existing = get_term_meta( $tid, '_engam_v2_sponsor_id', true );
-            if ( $existing !== '' && $existing !== false ) { $result['skipped_existing']++; continue; }
+            if ( isset( $term_has[ (int) $tid ] ) ) { $result['skipped_existing']++; continue; }
 
             if ( $write ) update_term_meta( $tid, '_engam_v2_sponsor_id', $acf_value );
             $result['migrated']++;
@@ -168,10 +193,15 @@ $ms_active     = $ms_configured || $ms_link_only;
 $sponsor_source = $ms_active ? 'ms' : ( $sheets_configured ? 'csv' : 'ms' );
 
 // Count posts AND terms still carrying legacy ACF sponsor IDs (for the migration card).
+// Posts join wp_posts to skip revisions/auto-drafts/trash so the count matches
+// what the migration actually touches.
 global $wpdb;
 $acf_candidate_count = (int) $wpdb->get_var(
-    "SELECT COUNT( DISTINCT post_id ) FROM {$wpdb->postmeta}
-      WHERE meta_key IN ( 'sponlineitemid', 'sponsorship_id' ) AND meta_value <> ''"
+    "SELECT COUNT( DISTINCT m.post_id ) FROM {$wpdb->postmeta} m
+       INNER JOIN {$wpdb->posts} p ON p.ID = m.post_id
+      WHERE m.meta_key IN ( 'sponlineitemid', 'sponsorship_id' ) AND m.meta_value <> ''
+        AND p.post_type <> 'revision'
+        AND p.post_status IN ( 'publish', 'private', 'draft', 'pending', 'future' )"
 ) + (int) $wpdb->get_var(
     "SELECT COUNT( DISTINCT term_id ) FROM {$wpdb->termmeta}
       WHERE meta_key IN ( 'sponlineitemid', 'sponsorship_id' ) AND meta_value <> ''"
@@ -321,7 +351,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
     <div class="eg-card">
         <div class="eg-head">
             <div>
-                <h2>Sponsor Spreadsheet</h2>
+                <h2>Sponsor ID Spreadsheet</h2>
                 <p>Connect your sponsorship ID sheet to populate the "Lock to Sponsor" dropdowns and the Carousels list.</p>
             </div>
             <span class="eg-tag" style="<?php echo ( $ms_active || $sheets_configured ) ? '' : 'background:#111;color:#d0ff00;'; ?>">
@@ -466,11 +496,8 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         </div>
     </div>
 
-
-</div>
-
-<!-- ACF SPONSOR ID MIGRATION -->
-<div class="eg-card" style="margin-top:18px">
+    <!-- ACF SPONSOR ID MIGRATION -->
+    <div class="eg-card">
     <div class="eg-head">
         <div>
             <h2>Migrate Sponsor IDs from ACF</h2>
@@ -483,7 +510,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
             <p style="font-size:13px;color:#555;margin:0">No posts, categories, or tags with legacy ACF sponsor IDs were found — nothing to migrate.</p>
         <?php else : ?>
             <p class="eg-hint" style="margin:0 0 14px">
-                Existing assignments are never overwritten — only posts without an EN Sponsor ID already set are updated. Run <strong>Preview</strong> first to see exactly what will change; it's safe to run more than once.
+                Existing assignments are never overwritten — only items without an EN Sponsor ID already set are updated. Revisions, auto-drafts, and trashed posts are skipped. Run <strong>Preview</strong> first to see exactly what will change; it's safe to run more than once.
             </p>
             <form method="post" action="">
                 <?php wp_nonce_field( 'engam_v2_settings_save', 'engam_v2_settings_nonce' ); ?>
@@ -533,7 +560,9 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
             <?php endif; ?>
         <?php endif; ?>
     </div>
-</div>
+    </div>
+
+</div><!-- .eg-grid -->
 
 </div><!-- .eg-content -->
 </div><!-- #engam-v2-wrap -->
