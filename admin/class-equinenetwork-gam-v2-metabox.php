@@ -11,6 +11,7 @@ class Equinenetwork_Gam_V2_Metabox {
 		add_action( 'add_meta_boxes', array( $this, 'register' ) );
 		add_action( 'save_post',      array( $this, 'save' ), 10, 2 );
 		add_action( 'admin_head',     array( $this, 'styles' ) );
+		add_action( 'admin_init',     array( $this, 'register_columns' ) );
 	}
 
 	public function register() {
@@ -133,7 +134,56 @@ class Equinenetwork_Gam_V2_Metabox {
 		.engam-meta-empty { font-size: 12px; color: #888; margin: 6px 0 0; }
 		.engam-meta-empty a { color: #050505; font-weight: 700; }
 		#engam_v2_campaign .inside { padding: 10px 12px; }
+		.column-engam_sponsor { width: 16%; }
 		</style>
 		<?php
+	}
+
+	/**
+	 * Add a "Sponsor ID" column to the post/page list tables so editors can see
+	 * at a glance which entries carry a sponsor assignment. Deferred to admin_init
+	 * so the post-type filter is resolved after other code can register it.
+	 */
+	public function register_columns() {
+		$post_types = apply_filters( 'engam_v2_metabox_post_types', array( 'post', 'page' ) );
+		foreach ( (array) $post_types as $pt ) {
+			add_filter( "manage_{$pt}_posts_columns",       array( $this, 'add_sponsor_column' ) );
+			add_action( "manage_{$pt}_posts_custom_column", array( $this, 'render_sponsor_column' ), 10, 2 );
+		}
+	}
+
+	public function add_sponsor_column( $columns ) {
+		// Insert just before the Date column when present, otherwise append.
+		$out = array();
+		foreach ( $columns as $key => $label ) {
+			if ( 'date' === $key ) $out['engam_sponsor'] = 'Sponsor ID';
+			$out[ $key ] = $label;
+		}
+		if ( ! isset( $out['engam_sponsor'] ) ) $out['engam_sponsor'] = 'Sponsor ID';
+		return $out;
+	}
+
+	public function render_sponsor_column( $column, $post_id ) {
+		if ( 'engam_sponsor' !== $column ) return;
+
+		// The plugin's own value wins; fall back to the raw legacy ACF meta (read
+		// directly so it still shows after the ACF field itself is deleted).
+		$val    = get_post_meta( $post_id, '_engam_v2_sponsor_id', true );
+		$legacy = false;
+		if ( $val === '' || $val === false ) {
+			$val = get_post_meta( $post_id, 'sponlineitemid', true );
+			if ( $val === '' || $val === false ) $val = get_post_meta( $post_id, 'sponsorship_id', true );
+			$legacy = ( $val !== '' && $val !== false );
+		}
+
+		if ( $val === '' || $val === false ) {
+			echo '<span style="color:#ccc">—</span>';
+			return;
+		}
+
+		echo '<code style="font-size:12px;background:#f3f3ee;border:1px solid #e3e3dc;padding:2px 6px;border-radius:3px">' . esc_html( $val ) . '</code>';
+		if ( $legacy ) {
+			echo '<div style="font-size:10px;color:#b26a00;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-top:3px">Legacy ACF — not migrated</div>';
+		}
 	}
 }
