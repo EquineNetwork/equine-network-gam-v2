@@ -1108,7 +1108,7 @@ class Equinenetwork_Gam_V2_API {
 		$token = $this->get_graph_token();
 		if ( is_wp_error( $token ) ) return array();
 
-		$sheet = get_option( 'engam_v2_ms_sheet_name', 'HR' );
+		$sheet = get_option( 'engam_v2_ms_sheet_name', '' );
 		$base  = $this->graph_file_base( get_option( 'engam_v2_ms_file_url', '' ), $token );
 		if ( is_wp_error( $base ) ) return array();
 
@@ -1385,7 +1385,7 @@ class Equinenetwork_Gam_V2_API {
 		$binary = $this->ms_link_download( get_option( 'engam_v2_ms_file_url', '' ) );
 		if ( is_wp_error( $binary ) ) return array();
 
-		$rows = $this->xlsx_rows( $binary, get_option( 'engam_v2_ms_sheet_name', 'HR' ) );
+		$rows = $this->xlsx_rows( $binary, get_option( 'engam_v2_ms_sheet_name', '' ) );
 		if ( is_wp_error( $rows ) ) return array();
 
 		$options = $this->extract_sponsors_from_rows( $rows );
@@ -1427,7 +1427,7 @@ class Equinenetwork_Gam_V2_API {
 		$sheets = $this->xlsx_sheet_names( $binary );
 		if ( is_wp_error( $sheets ) ) return $sheets;
 
-		$sheet = get_option( 'engam_v2_ms_sheet_name', 'HR' );
+		$sheet = get_option( 'engam_v2_ms_sheet_name', '' );
 		$rows  = $this->xlsx_rows( $binary, $sheet );
 		if ( is_wp_error( $rows ) ) return $rows;
 

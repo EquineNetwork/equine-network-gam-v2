@@ -21,6 +21,7 @@ class Equinenetwork_Gam_V2_Admin {
 		add_action( 'wp_ajax_engam_v2_search_posts',      array( $this, 'ajax_search_posts' ) );
 		add_action( 'wp_ajax_engam_v2_search_terms',      array( $this, 'ajax_search_terms' ) );
 		add_action( 'wp_ajax_engam_v2_report_slot_mismatch', array( $this, 'ajax_report_slot_mismatch' ) );
+		add_action( 'wp_ajax_nopriv_engam_v2_report_slot_mismatch', array( $this, 'ajax_report_slot_mismatch' ) );
 		add_action( 'wp_ajax_engam_v2_dismiss_slot_warning', array( $this, 'ajax_dismiss_slot_warning' ) );
 		add_action( 'admin_notices',                      array( $this, 'admin_notice_slot_mismatch' ) );
 	}
@@ -107,7 +108,7 @@ class Equinenetwork_Gam_V2_Admin {
 		add_menu_page(
 			'EquineNetwork GAM v2',
 			'EN Ads',
-			'edit_posts',
+			'edit_others_posts',
 			'equinenetwork-gam-v2',
 			array( $this, 'page_dashboard' ),
 			'dashicons-megaphone',
@@ -119,7 +120,7 @@ class Equinenetwork_Gam_V2_Admin {
 			'equinenetwork-gam-v2',
 			'EN Ads — Dashboard',
 			'Dashboard',
-			'edit_posts',
+			'edit_others_posts',
 			'equinenetwork-gam-v2',
 			array( $this, 'page_dashboard' )
 		);
@@ -129,7 +130,7 @@ class Equinenetwork_Gam_V2_Admin {
 			'equinenetwork-gam-v2',
 			'EN Ads — Leaderboards',
 			'Leaderboards',
-			'edit_posts',
+			'edit_others_posts',
 			'engam-v2-leaderboards',
 			array( $this, 'page_leaderboards' )
 		);
@@ -139,7 +140,7 @@ class Equinenetwork_Gam_V2_Admin {
 			'equinenetwork-gam-v2',
 			'EN Ads — Takeovers',
 			'Takeovers',
-			'edit_posts',
+			'edit_others_posts',
 			'engam-v2-takeovers',
 			array( $this, 'page_takeovers' )
 		);
@@ -149,7 +150,7 @@ class Equinenetwork_Gam_V2_Admin {
 			'equinenetwork-gam-v2',
 			'EN Ads — Carousels',
 			'Carousels',
-			'edit_posts',
+			'edit_others_posts',
 			'engam-v2-carousels',
 			array( $this, 'page_carousels' )
 		);
@@ -159,7 +160,7 @@ class Equinenetwork_Gam_V2_Admin {
 			'equinenetwork-gam-v2',
 			'EN Ads — Stackers',
 			'Stackers',
-			'edit_posts',
+			'edit_others_posts',
 			'engam-v2-stackers',
 			array( $this, 'page_stackers' )
 		);
@@ -169,7 +170,7 @@ class Equinenetwork_Gam_V2_Admin {
 			'equinenetwork-gam-v2',
 			"EN Ads — Sponsor ID's",
 			"Sponsor ID's",
-			'edit_posts',
+			'edit_others_posts',
 			'engam-v2-campaigns',
 			array( $this, 'page_campaigns' )
 		);
@@ -219,7 +220,7 @@ class Equinenetwork_Gam_V2_Admin {
 
 	public function ajax_test_connection() {
 		check_ajax_referer( 'engam_v2_ajax', 'nonce' );
-		if ( ! current_user_can( 'edit_posts' ) ) wp_die( -1 );
+		if ( ! current_user_can( 'edit_others_posts' ) ) wp_die( -1 );
 
 		$api    = new Equinenetwork_Gam_V2_API();
 		$result = $api->diagnose();
@@ -228,7 +229,7 @@ class Equinenetwork_Gam_V2_Admin {
 
 	public function ajax_refresh_cache() {
 		check_ajax_referer( 'engam_v2_ajax', 'nonce' );
-		if ( ! current_user_can( 'edit_posts' ) ) wp_die( -1 );
+		if ( ! current_user_can( 'edit_others_posts' ) ) wp_die( -1 );
 
 		$api = new Equinenetwork_Gam_V2_API();
 		$api->clear_cache();
@@ -242,7 +243,7 @@ class Equinenetwork_Gam_V2_Admin {
 
 	public function ajax_get_line_items() {
 		check_ajax_referer( 'engam_v2_ajax', 'nonce' );
-		if ( ! current_user_can( 'edit_posts' ) ) wp_die( -1 );
+		if ( ! current_user_can( 'edit_others_posts' ) ) wp_die( -1 );
 
 		$api   = new Equinenetwork_Gam_V2_API();
 		$items = $api->get_line_items();
@@ -312,7 +313,7 @@ class Equinenetwork_Gam_V2_Admin {
 				wp_send_json_error( 'Connected to Microsoft, but could not read the file: ' . $sheets->get_error_message() );
 			}
 			$options = $api->get_ms_sponsor_options( true );
-			$sheet   = get_option( 'engam_v2_ms_sheet_name', 'HR' );
+			$sheet   = get_option( 'engam_v2_ms_sheet_name', '' );
 			wp_send_json_success(
 				'Connected via Microsoft Graph! Found ' . count( $options ) . ' active sponsors in the "' . esc_html( $sheet ) . '" tab. '
 				. 'Available tabs: ' . esc_html( implode( ', ', $sheets ) ) . '.'
@@ -353,7 +354,7 @@ class Equinenetwork_Gam_V2_Admin {
 
 		wp_send_json_success( array(
 			'tabs'    => array_values( (array) $tabs ),
-			'current' => get_option( 'engam_v2_ms_sheet_name', 'HR' ),
+			'current' => get_option( 'engam_v2_ms_sheet_name', '' ),
 		) );
 	}
 
@@ -432,7 +433,7 @@ class Equinenetwork_Gam_V2_Admin {
 	 */
 	public function ajax_search_posts() {
 		check_ajax_referer( 'engam_v2_ajax', 'nonce' );
-		if ( ! current_user_can( 'edit_posts' ) ) wp_send_json_error( 'Unauthorized', 403 );
+		if ( ! current_user_can( 'edit_others_posts' ) ) wp_send_json_error( 'Unauthorized', 403 );
 
 		$q     = isset( $_GET['q'] ) ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '';
 		$types = isset( $_GET['types'] ) ? array_map( 'sanitize_key', (array) $_GET['types'] ) : array( 'post', 'page' );
@@ -470,7 +471,7 @@ class Equinenetwork_Gam_V2_Admin {
 	 */
 	public function ajax_search_terms() {
 		check_ajax_referer( 'engam_v2_ajax', 'nonce' );
-		if ( ! current_user_can( 'edit_posts' ) ) wp_send_json_error( 'Unauthorized', 403 );
+		if ( ! current_user_can( 'edit_others_posts' ) ) wp_send_json_error( 'Unauthorized', 403 );
 
 		$q        = isset( $_GET['q'] ) ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '';
 		$taxonomy = isset( $_GET['taxonomy'] ) ? sanitize_key( $_GET['taxonomy'] ) : 'category';
@@ -513,10 +514,19 @@ class Equinenetwork_Gam_V2_Admin {
 		}
 
 		$warnings = get_option( 'engam_v2_slot_warnings', array() );
+		if ( ! is_array( $warnings ) ) $warnings = array();
+
+		// This endpoint is reachable by unauthenticated visitors (the nonce is
+		// embedded in public page source), so cap the stored set to prevent the
+		// option from being flooded. Known keys still update in place; only NEW
+		// keys are rejected once the cap is reached.
+		$key = $configured_id . '_' . $served_id . '_' . $slot;
+		if ( ! isset( $warnings[ $key ] ) && count( $warnings ) >= 50 ) {
+			wp_send_json_success();
+		}
+
 		// Key includes the slot so each affected rail (left/right/bg) is tracked
 		// separately — a foreign line item often wins all three at once.
-		$key      = $configured_id . '_' . $served_id . '_' . $slot;
-
 		$warnings[ $key ] = array(
 			'takeover_name' => $takeover_name,
 			'slot'          => $slot,
@@ -535,7 +545,7 @@ class Equinenetwork_Gam_V2_Admin {
 	 */
 	public function ajax_dismiss_slot_warning() {
 		check_ajax_referer( 'engam_v2_ajax', 'nonce' );
-		if ( ! current_user_can( 'edit_posts' ) ) wp_die( -1 );
+		if ( ! current_user_can( 'edit_others_posts' ) ) wp_die( -1 );
 
 		$key      = sanitize_text_field( wp_unslash( $_POST['key'] ?? '' ) );
 		$warnings = get_option( 'engam_v2_slot_warnings', array() );
@@ -555,7 +565,7 @@ class Equinenetwork_Gam_V2_Admin {
 	 * to a wrap or masthead slot.
 	 */
 	public function admin_notice_slot_mismatch() {
-		if ( ! current_user_can( 'edit_posts' ) ) return;
+		if ( ! current_user_can( 'edit_others_posts' ) ) return;
 
 		$warnings = get_option( 'engam_v2_slot_warnings', array() );
 		if ( empty( $warnings ) ) return;

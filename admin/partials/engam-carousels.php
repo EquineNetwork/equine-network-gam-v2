@@ -58,7 +58,7 @@ $engam_car_defaults = array(
 
 // ---- Handle POST ----
 if ( isset( $_POST['engam_v2_carousel_nonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['engam_v2_carousel_nonce'] ) ), 'engam_v2_carousel_save' ) ) {
-    if ( ! current_user_can( 'edit_posts' ) ) wp_die( -1 );
+    if ( ! current_user_can( 'edit_others_posts' ) ) wp_die( -1 );
 
     // ---- Delete ----
     if ( isset( $_POST['engam_carousel_delete'] ) ) {
@@ -320,7 +320,8 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
             Click "Add New Carousel" above to build your first carousel.
         </div>
     <?php else : ?>
-        <table class="eg-table">
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <table class="eg-table" style="min-width:640px">
             <thead>
                 <tr>
                     <th>Name</th>
@@ -351,7 +352,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         <div class="eg-campaign-name"><?php echo esc_html( $car['name'] ); ?></div>
                         <code class="engam-car-shortcode" data-shortcode="<?php echo esc_attr( $shortcode ); ?>"
                             title="Click to copy"
-                            style="display:inline-block;margin-top:4px;font-size:12px;background:#f3f3ee;border:1px solid #deded8;border-radius:4px;padding:3px 8px;cursor:pointer;font-family:monospace"><?php echo esc_html( $shortcode ); ?></code>
+                            style="display:inline-block;margin-top:4px;font-size:12px;background:#f3f3ee;border:1px solid #deded8;border-radius:4px;padding:3px 8px;cursor:pointer;font-family:monospace;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom"><?php echo esc_html( $shortcode ); ?></code>
                         <span class="engam-car-copyhint" style="font-size:11px;color:#888;margin-left:6px">click to copy</span>
                     </td>
                     <td style="font-size:12px;color:#555"><?php echo esc_html( $source ); ?></td>
@@ -412,6 +413,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </div><!-- overflow-x:auto -->
     <?php endif; ?>
     <div class="eg-accentline"></div>
 </div>
