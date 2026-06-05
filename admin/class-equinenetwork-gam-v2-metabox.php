@@ -31,7 +31,15 @@ class Equinenetwork_Gam_V2_Metabox {
 	public function render( $post ) {
 		wp_nonce_field( 'engam_v2_metabox_save', 'engam_v2_metabox_nonce' );
 
+		// Current saved value; fall back to legacy ACF fields for pre-migration posts.
 		$current = get_post_meta( $post->ID, '_engam_v2_sponsor_id', true );
+		if ( $current === '' || $current === false ) {
+			$current = get_post_meta( $post->ID, 'sponlineitemid', true );
+		}
+		if ( $current === '' || $current === false ) {
+			$current = get_post_meta( $post->ID, 'sponsorship_id', true );
+		}
+		if ( $current === false ) $current = '';
 
 		// Get campaign options — prefer live GAM API, fall back to manual list.
 		$options = $this->get_campaign_options();
@@ -42,15 +50,10 @@ class Equinenetwork_Gam_V2_Metabox {
 				All ad slots on this page will target the selected campaign.
 			</p>
 
-			<label for="engam_v2_sponsor_id" class="engam-meta-label">Sponsor ID</label>
-
-			<?php if ( empty( $options ) ) : ?>
-				<p class="engam-meta-empty">
-					No sponsors available. <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-settings' ) ); ?>">Connect your Google Sheet</a> in EN Ads Settings.
-				</p>
-			<?php else : ?>
-				<select name="engam_v2_sponsor_id" id="engam_v2_sponsor_id" class="engam-meta-select">
-					<option value="">— No campaign override —</option>
+			<?php if ( ! empty( $options ) ) : ?>
+				<label for="engam_v2_sponsor_id_select" class="engam-meta-label" style="margin-top:4px">Pick from spreadsheet</label>
+				<select id="engam_v2_sponsor_id_select" class="engam-meta-select">
+					<option value="">— select to fill field below —</option>
 					<?php foreach ( $options as $value => $label ) : ?>
 						<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $current, $value ); ?>>
 							<?php echo esc_html( $label ); ?>
@@ -59,13 +62,32 @@ class Equinenetwork_Gam_V2_Metabox {
 				</select>
 			<?php endif; ?>
 
+			<label for="engam_v2_sponsor_id" class="engam-meta-label" style="margin-top:10px">Sponsor ID</label>
+			<input
+				type="text"
+				name="engam_v2_sponsor_id"
+				id="engam_v2_sponsor_id"
+				class="engam-meta-input"
+				value="<?php echo esc_attr( $current ); ?>"
+				placeholder="e.g. videotips_hr_bimeda"
+			/>
 			<?php if ( $current ) : ?>
-				<p class="engam-meta-current">
-					Current: <code><?php echo esc_html( $current ); ?></code>
-					<a href="#" onclick="document.getElementById('engam_v2_sponsor_id').value='';return false;">Clear</a>
-				</p>
+				<a href="#" class="engam-meta-clear" onclick="document.getElementById('engam_v2_sponsor_id').value='';document.getElementById('engam_v2_sponsor_id_select') && (document.getElementById('engam_v2_sponsor_id_select').value='');return false;">Clear</a>
 			<?php endif; ?>
 		</div>
+		<?php if ( ! empty( $options ) ) : ?>
+		<script>
+		(function(){
+			var sel = document.getElementById('engam_v2_sponsor_id_select');
+			var inp = document.getElementById('engam_v2_sponsor_id');
+			if ( sel && inp ) {
+				sel.addEventListener('change', function(){
+					if ( this.value ) inp.value = this.value;
+				});
+			}
+		})();
+		</script>
+		<?php endif; ?>
 		<?php
 	}
 
@@ -128,6 +150,9 @@ class Equinenetwork_Gam_V2_Metabox {
 		.engam-meta-label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
 		.engam-meta-select { width: 100%; padding: 7px 8px; font-size: 13px; border: 1px solid #bbb; background: #fff; }
 		.engam-meta-select:focus { border-color: #050505; outline: none; }
+		.engam-meta-input { width: 100%; padding: 7px 8px; font-size: 13px; border: 1px solid #bbb; background: #fff; box-sizing: border-box; }
+		.engam-meta-input:focus { border-color: #050505; outline: none; }
+		.engam-meta-clear { display: block; font-size: 11px; color: #cc0000; text-decoration: none; margin-top: 5px; }
 		.engam-meta-current { font-size: 12px; color: #555; margin: 8px 0 0; }
 		.engam-meta-current code { background: #d0ff00; padding: 1px 5px; font-size: 11px; color: #111; }
 		.engam-meta-current a { color: #cc0000; text-decoration: none; margin-left: 6px; }
