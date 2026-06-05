@@ -564,6 +564,72 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 
 </div><!-- .eg-grid -->
 
+<!-- ACF SPONSOR ID MIGRATION -->
+<div class="eg-card" style="margin-top:18px">
+    <div class="eg-head">
+        <div>
+            <h2>Migrate Sponsor IDs from ACF</h2>
+            <p>One-time merge: copy sponsor IDs assigned with the legacy ACF fields (<code>sponlineitemid</code> / <code>sponsorship_id</code>) into this plugin — across posts, pages, categories, and tags — so they keep working after you delete those ACF fields.</p>
+        </div>
+        <span class="eg-tag"<?php echo $acf_candidate_count > 0 ? '' : ' style="background:#eee;color:#999"'; ?>><?php echo (int) $acf_candidate_count; ?> found</span>
+    </div>
+    <div class="eg-body">
+        <?php if ( $acf_candidate_count === 0 && ! $migration_result ) : ?>
+            <p style="font-size:13px;color:#555;margin:0">No posts, categories, or tags with legacy ACF sponsor IDs were found — nothing to migrate.</p>
+        <?php else : ?>
+            <p class="eg-hint" style="margin:0 0 14px">
+                Existing assignments are never overwritten — only posts without an EN Sponsor ID already set are updated. Run <strong>Preview</strong> first to see exactly what will change; it's safe to run more than once.
+            </p>
+            <form method="post" action="">
+                <?php wp_nonce_field( 'engam_v2_settings_save', 'engam_v2_settings_nonce' ); ?>
+                <input type="hidden" name="engam_form" value="acf_migrate">
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    <button type="submit" class="eg-btn dark" style="border-color:#111">Preview Changes</button>
+                    <button type="submit" name="acf_migrate_confirm" value="1" class="eg-btn"
+                        onclick="return confirm('Copy ACF sponsor IDs into the plugin for every post that does not already have one? Safe to re-run.')">Run Migration Now</button>
+                </div>
+            </form>
+
+            <?php if ( $migration_result ) : ?>
+            <div style="margin-top:16px;border:1px solid #deded8;border-radius:6px;padding:14px;background:#fafaf8">
+                <strong style="font-size:13px;display:block;margin-bottom:8px">
+                    <?php echo $migration_ran ? 'Migration complete' : 'Preview — no changes made yet'; ?>
+                </strong>
+                <div style="font-size:13px;color:#333;margin-bottom:10px">
+                    <?php echo (int) $migration_result['candidates']; ?> item(s) with ACF sponsor IDs &middot;
+                    <strong><?php echo (int) $migration_result['migrated']; ?></strong> <?php echo $migration_ran ? 'migrated' : 'will be migrated'; ?>
+                    (<?php echo (int) $migration_result['posts']; ?> post/page, <?php echo (int) $migration_result['terms']; ?> category/tag) &middot;
+                    <?php echo (int) $migration_result['skipped_existing']; ?> already had a plugin value (left unchanged)
+                </div>
+                <?php if ( ! empty( $migration_result['samples'] ) ) : ?>
+                <table class="eg-table" style="margin-top:6px">
+                    <thead><tr><th>Type</th><th>Item</th><th>Sponsor ID</th></tr></thead>
+                    <tbody>
+                        <?php foreach ( $migration_result['samples'] as $s ) : ?>
+                        <tr>
+                            <td style="font-size:12px;color:#555"><?php echo esc_html( $s['kind'] ); ?><?php echo $s['meta'] ? ' &middot; ' . esc_html( $s['meta'] ) : ''; ?></td>
+                            <td>
+                                <?php if ( ! empty( $s['edit'] ) ) : ?>
+                                    <a href="<?php echo esc_url( $s['edit'] ); ?>" style="font-weight:700;text-decoration:none;color:#050505"><?php echo esc_html( $s['title'] ); ?></a>
+                                <?php else : ?>
+                                    <strong><?php echo esc_html( $s['title'] ); ?></strong>
+                                <?php endif; ?>
+                            </td>
+                            <td><code style="font-size:12px"><?php echo esc_html( $s['value'] ); ?></code></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php if ( (int) $migration_result['migrated'] > count( $migration_result['samples'] ) ) : ?>
+                <p class="eg-hint" style="margin:8px 0 0">Showing first <?php echo count( $migration_result['samples'] ); ?> of <?php echo (int) $migration_result['migrated']; ?>.</p>
+                <?php endif; ?>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+        <?php endif; ?>
+    </div>
+</div>
+
 </div><!-- .eg-content -->
 </div><!-- #engam-v2-wrap -->
 
