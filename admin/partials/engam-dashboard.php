@@ -266,17 +266,27 @@ if ( is_array( $stk_settings ) ) {
 // Build leaderboard placement rows for the dashboard card (name → position label).
 $lb_card_rows = array();
 foreach ( $lb_detail_rows as $ldr ) {
-    $lb_card_rows[] = $ldr['name'] . ' — ' . $ldr['pos'];
+    $lb_card_rows[] = array( 'label' => $ldr['name'] . ' — ' . $ldr['pos'], 'edit' => '' );
 }
 
 // Merge medium_rect and med_half placements; half_page and med_half placements.
 $mr_placements = array_merge( $ad_slot_placements['medium_rect'] ?? array(), $ad_slot_placements['med_half'] ?? array() );
 $hp_placements = array_merge( $ad_slot_placements['half_page']   ?? array(), $ad_slot_placements['med_half'] ?? array() );
 
+// Elementor placement rows link to the page / template editor.
+$mr_rows = array();
+foreach ( $mr_placements as $p ) {
+    $mr_rows[] = array( 'label' => $p['title'], 'edit' => get_edit_post_link( $p['post_id'], 'raw' ) );
+}
+$hp_rows = array();
+foreach ( $hp_placements as $p ) {
+    $hp_rows[] = array( 'label' => $p['title'], 'edit' => get_edit_post_link( $p['post_id'], 'raw' ) );
+}
+
 $metric_cards = array(
     array( 'label' => 'Leaderboards',     'count' => $m_leaderboard, 'link' => 'engam-v2-leaderboards', 'rows' => $lb_card_rows ),
-    array( 'label' => 'Medium Rectangle', 'count' => $m_medium_rect, 'link' => null, 'rows' => array_column( $mr_placements, 'title' ) ),
-    array( 'label' => 'Half Page',        'count' => $m_half_page,   'link' => null, 'rows' => array_column( $hp_placements, 'title' ) ),
+    array( 'label' => 'Medium Rectangle', 'count' => $m_medium_rect, 'link' => null, 'rows' => $mr_rows ),
+    array( 'label' => 'Half Page',        'count' => $m_half_page,   'link' => null, 'rows' => $hp_rows ),
     array( 'label' => 'Carousel',         'count' => $m_carousel,    'link' => 'engam-v2-carousels' ),
     array( 'label' => 'Masthead',         'count' => $m_masthead,    'link' => 'engam-v2-takeovers' ),
     array( 'label' => 'Wrap Takeover',    'count' => $m_wrap,        'link' => 'engam-v2-takeovers' ),
@@ -298,9 +308,16 @@ $metric_cards = array(
                 <span class="eg-tag"<?php echo $tag_attr; // phpcs:ignore ?>><?php echo $count; ?> Active</span>
             </div>
             <?php if ( ! empty( $mc['rows'] ) ) : ?>
-            <div style="margin-top:10px;padding-top:10px;border-top:1px solid #eee">
-                <?php foreach ( $mc['rows'] as $row_label ) : ?>
-                <div style="font-size:12px;color:#555;padding:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?php echo esc_html( $row_label ); ?></div>
+            <div style="margin-top:10px;padding:10px 24px 0;border-top:1px solid #eee">
+                <?php foreach ( $mc['rows'] as $row ) :
+                    $row_label = is_array( $row ) ? $row['label'] : $row;
+                    $row_edit  = is_array( $row ) ? $row['edit']  : '';
+                ?>
+                    <?php if ( $row_edit ) : ?>
+                    <a href="<?php echo esc_url( $row_edit ); ?>" class="eg-metric-row" title="Edit &ldquo;<?php echo esc_attr( $row_label ); ?>&rdquo;"><?php echo esc_html( $row_label ); ?></a>
+                    <?php else : ?>
+                    <div class="eg-metric-row"><?php echo esc_html( $row_label ); ?></div>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             </div>
             <?php endif; ?>
