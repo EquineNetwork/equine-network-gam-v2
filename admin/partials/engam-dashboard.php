@@ -308,7 +308,7 @@ $metric_cards = array(
                 <span class="eg-tag"<?php echo $tag_attr; // phpcs:ignore ?>><?php echo $count; ?> Active</span>
             </div>
             <?php if ( ! empty( $mc['rows'] ) ) : ?>
-            <div style="margin-top:10px;padding:10px 24px 0;border-top:1px solid #eee">
+            <div style="margin-top:10px;padding:10px 24px <?php echo $has_link ? '0' : '18px'; ?>;border-top:1px solid #eee">
                 <?php foreach ( $mc['rows'] as $row ) :
                     $row_label = is_array( $row ) ? $row['label'] : $row;
                     $row_edit  = is_array( $row ) ? $row['edit']  : '';
