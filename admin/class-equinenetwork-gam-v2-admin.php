@@ -106,13 +106,13 @@ class Equinenetwork_Gam_V2_Admin {
 	public function add_menu() {
 		// Top-level page (Dashboard)
 		add_menu_page(
-			'EquineNetwork GAM v2',
+			'Equine Network GAM v2',
 			'EN Ads',
 			'edit_others_posts',
 			'equinenetwork-gam-v2',
 			array( $this, 'page_dashboard' ),
 			'dashicons-megaphone',
-			58
+			4
 		);
 
 		// Rename the auto-generated submenu entry that mirrors the top-level
