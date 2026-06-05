@@ -44,11 +44,16 @@ if ( $post_meta_sponsor ) {
 } elseif ( $term_meta_sponsor ) {
 	$sponsor_override = esc_js( $term_meta_sponsor );
 } else {
-	// Legacy ACF fallback so existing sites keep working.
-	if ( function_exists( 'get_field' ) ) {
-		$acf_val = get_field( 'sponlineitemid' ) ?: get_field( 'sponsorship_id' );
-		if ( $acf_val ) $sponsor_override = esc_js( $acf_val );
+	// Legacy fallback: read the values the old ACF fields STORED, directly from
+	// post/term meta rather than via get_field(). ACF leaves these meta values in
+	// the database when a field is deleted, so reading them directly keeps any
+	// ACF-assigned sponsor ID working even after the ACF field itself is removed.
+	$legacy_pid = get_the_ID();
+	$acf_val    = $legacy_pid ? ( get_post_meta( $legacy_pid, 'sponlineitemid', true ) ?: get_post_meta( $legacy_pid, 'sponsorship_id', true ) ) : '';
+	if ( ! $acf_val && $queried instanceof WP_Term ) {
+		$acf_val = get_term_meta( $queried->term_id, 'sponlineitemid', true ) ?: get_term_meta( $queried->term_id, 'sponsorship_id', true );
 	}
+	if ( $acf_val ) $sponsor_override = esc_js( $acf_val );
 	// exceptions.json fallback.
 	$exceptions_file = EQUINENETWORK_GAM_V2_PATH . 'public/exceptions/exceptions.json';
 	if ( file_exists( $exceptions_file ) ) {
