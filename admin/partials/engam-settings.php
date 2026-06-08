@@ -380,7 +380,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 
             <!-- MICROSOFT 365 SECTION -->
             <div id="engam-src-ms-body" style="<?php echo $sponsor_source !== 'ms' ? 'display:none' : ''; ?>">
-                <form method="post" action="">
+                <form method="post" action="" id="engam-ms-form">
                     <?php wp_nonce_field( 'engam_v2_settings_save', 'engam_v2_settings_nonce' ); ?>
                     <input type="hidden" name="engam_form" value="ms_sponsor">
 
@@ -578,13 +578,26 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
     var tabHint    = document.getElementById('engam-ms-sheet-hint');
     var msFileUrl  = document.getElementById('engam-ms-file-url');
 
+    // Reads whichever tab control is currently visible (select once tabs are
+    // loaded, otherwise the text input). Single source of truth for the value.
+    function currentTabValue() {
+        if (tabSelect && tabSelect.style.display !== 'none') return tabSelect.value;
+        if (tabText) return tabText.value;
+        return tabValue ? tabValue.value : '';
+    }
+    function syncTabValue() {
+        if (tabValue) tabValue.value = currentTabValue();
+    }
+
     // Keep the hidden value in sync whichever control is visible.
-    if (tabSelect) tabSelect.addEventListener('change', function(){
-        if (tabValue) tabValue.value = tabSelect.value;
-    });
-    if (tabText) tabText.addEventListener('input', function(){
-        if (tabValue) tabValue.value = tabText.value;
-    });
+    if (tabSelect) tabSelect.addEventListener('change', syncTabValue);
+    if (tabText)   tabText.addEventListener('input', syncTabValue);
+
+    // Belt-and-braces: force a sync the instant the form is submitted so the
+    // saved value always matches what the admin sees, even if a change event
+    // was missed (e.g. value set programmatically or autofilled).
+    var msForm = document.getElementById('engam-ms-form');
+    if (msForm) msForm.addEventListener('submit', syncTabValue);
 
     function fillTabs(tabs, current) {
         if (!tabSelect) return;
