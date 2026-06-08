@@ -48,6 +48,7 @@ function engam_v2_uninstall_cleanup() {
         'engam_v2_ms_client_secret',
         'engam_v2_ms_file_url',
         'engam_v2_ms_sheet_name',
+        'engam_v2_li_manual',              // line items wired up by direct GAM-ID lookup
     );
     foreach ( $options as $opt ) {
         delete_option( $opt );

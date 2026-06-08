@@ -17,6 +17,7 @@ class Equinenetwork_Gam_V2_API {
 	const CACHE_AI_CATS      = 'engam_v2_ai_category_values'; // read-only ai_category targeting taxonomy from GAM
 	const CACHE_GRAPH_TOKEN  = 'engam_v2_graph_token';       // Microsoft Graph OAuth2 token
 	const CACHE_MS_SHEETS    = 'engam_v2_ms_worksheets';     // cached list of worksheet names
+	const OPTION_MANUAL_LI   = 'engam_v2_li_manual';         // line items wired up by direct GAM-ID lookup
 
 	private $credentials;
 	private $network_code;
@@ -289,92 +290,63 @@ class Equinenetwork_Gam_V2_API {
 	/**
 	 * Fetches the line items for THIS site and caches them.
 	 *
-	 * The per-site list comes from a GAM report scoped to the site's ad unit(s). That report only
-	 * returns line items that have actually DELIVERED on this inventory in the last 90 days, so
-	 * brand-new / not-yet-delivered line items are invisible to it. To make those selectable
-	 * immediately we also pull the full network list and merge in any *site-targeted*, currently-
-	 * flighting item the report missed (deduped by GAM ID). The full list is scoped to this site's
-	 * ad units via each line item's own inventory targeting — without that scope the merge would
-	 * dump every line item in the network into the picker. The list also carries flight dates, which
-	 * the report omits, so we use it to backfill start/end on the report rows too (the takeover
-	 * uses those dates to stop serving automatically when the GAM flight ends).
+	 * The per-site list comes from a GAM report scoped to the site's ad unit(s) — that is the only
+	 * way to scope to this site, because the GAM lineItems.list response does NOT include targeting
+	 * (so we can't tell from the list which items run on this inventory). The report only returns
+	 * items that have actually DELIVERED in the last 90 days, so brand-new / not-yet-delivered items
+	 * never appear there; those are wired up individually via lookup_line_item() (the "look up by
+	 * GAM ID" picker control) and merged in from a durable option below. The list IS used to backfill
+	 * flight dates onto the report rows (the report omits them), which the takeover relies on to stop
+	 * serving when the GAM flight ends.
 	 */
 	private function fetch_line_items( $token ) {
 		$report_items = $this->run_ad_unit_report( $token );
-
-		// Full network list — gives us flight dates and lets us catch site-targeted line items the
-		// delivery report cannot return yet (new / not-yet-delivered).
-		$network_code = preg_replace( '/[^0-9]/', '', $this->network_code );
-		$base_url     = self::GAM_REST_BASE . '/networks/' . $network_code . '/lineItems';
-		$raw          = $this->list_line_items_raw( $token, $base_url, '' );
-		if ( is_wp_error( $raw ) ) {
-			$raw = array();
-		}
-
-		// Numeric IDs of this site's ad units (root + direct children), used to scope the list.
-		$ad_unit_ids = array();
-		foreach ( $this->get_site_ad_unit_resources( $token ) as $r ) {
-			$ad_unit_ids[ (string) basename( $r ) ] = true;
-		}
-
-		// Index the raw list by GAM ID with mapped fields + a "targets this site" flag.
-		$filter_keyword = strtolower( get_option( 'equinenetwork_gam_v2_filter', '' ) );
-		$list_index     = array();
-		foreach ( $raw as $li ) {
-			$mapped = $this->map_one_line_item( $li );
-			if ( $mapped['gam_id'] === '' ) {
-				continue;
-			}
-			if ( $filter_keyword
-				&& stripos( $mapped['name'], $filter_keyword ) === false
-				&& stripos( (string) $mapped['id'], $filter_keyword ) === false ) {
-				continue;
-			}
-			$list_index[ $mapped['gam_id'] ] = array(
-				'item'    => $mapped,
-				'on_site' => $this->line_item_targets_units( $li, $ad_unit_ids ),
-			);
-		}
-
 		if ( is_wp_error( $report_items ) ) {
-			// Report path unavailable — fall back to the site-targeted, currently-live list items.
-			$items = array();
-			foreach ( $list_index as $entry ) {
-				if ( $entry['on_site'] && $this->is_active_line_item( $entry['item'] ) ) {
-					$items[] = $entry['item'];
-				}
-			}
-			if ( empty( $items ) ) {
-				return $report_items; // nothing usable — surface the original report error
-			}
-		} else {
-			$items = $report_items;
-			$seen  = array();
+			// Without the report there is no reliable per-site list (the list has no targeting), so
+			// surface the error rather than dumping the entire unscoped network list into the picker.
+			return $report_items;
+		}
 
-			// Backfill flight dates onto report rows (the report doesn't return them).
-			foreach ( $items as &$it ) {
-				$gid = isset( $it['gam_id'] ) ? (string) $it['gam_id'] : '';
+		// The report omits flight dates — pull them from the full list and backfill by GAM ID.
+		$network_code = preg_replace( '/[^0-9]/', '', $this->network_code );
+		$raw          = $this->list_line_items_raw( $token, self::GAM_REST_BASE . '/networks/' . $network_code . '/lineItems', '' );
+		$dates_by_id  = array();
+		if ( ! is_wp_error( $raw ) ) {
+			foreach ( $raw as $li ) {
+				$gid = isset( $li['name'] ) && $li['name'] !== '' ? (string) basename( $li['name'] ) : '';
 				if ( $gid === '' ) {
 					continue;
 				}
-				$seen[ $gid ] = true;
-				if ( isset( $list_index[ $gid ] ) ) {
-					$li = $list_index[ $gid ]['item'];
-					if ( empty( $it['start_time'] ) ) $it['start_time'] = $li['start_time'];
-					if ( empty( $it['end_time'] ) )   $it['end_time']   = $li['end_time'];
-				}
+				$dates_by_id[ $gid ] = array(
+					'start' => isset( $li['startTime'] ) ? $li['startTime'] : '',
+					'end'   => isset( $li['endTime'] )   ? $li['endTime']   : '',
+				);
 			}
-			unset( $it );
+		}
 
-			// Append site-targeted, currently-live items the report didn't return.
-			foreach ( $list_index as $gid => $entry ) {
-				if ( isset( $seen[ $gid ] ) || ! $entry['on_site'] ) {
-					continue;
+		$items = $report_items;
+		$seen  = array();
+		foreach ( $items as &$it ) {
+			$gid = isset( $it['gam_id'] ) ? (string) $it['gam_id'] : '';
+			if ( $gid === '' ) {
+				continue;
+			}
+			$seen[ $gid ] = true;
+			if ( isset( $dates_by_id[ $gid ] ) ) {
+				if ( empty( $it['start_time'] ) ) $it['start_time'] = $dates_by_id[ $gid ]['start'];
+				if ( empty( $it['end_time'] ) )   $it['end_time']   = $dates_by_id[ $gid ]['end'];
+			}
+		}
+		unset( $it );
+
+		// Merge in line items wired up by direct GAM-ID lookup. Stored in a durable option (not just
+		// the cache) so a not-yet-delivered item never falls back out of the picker on a rebuild.
+		$manual = get_option( self::OPTION_MANUAL_LI, array() );
+		if ( is_array( $manual ) ) {
+			foreach ( $manual as $gid => $mi ) {
+				if ( is_array( $mi ) && ! isset( $seen[ (string) $gid ] ) ) {
+					$items[] = $mi;
 				}
-				if ( ! $this->is_active_line_item( $entry['item'] ) ) {
-					continue;
-				}
-				$items[] = $entry['item'];
 			}
 		}
 
@@ -388,21 +360,66 @@ class Equinenetwork_Gam_V2_API {
 	}
 
 	/**
-	 * Whether a mapped list item should appear in the picker: a live status (delivering / ready /
-	 * paused, or unknown) AND not past its flight end date. Keeps the per-site list to current and
-	 * upcoming line items rather than every item that ever targeted the site.
+	 * Looks up a single line item directly from GAM by numeric ID (a single GET, which — unlike the
+	 * list — returns the full resource). Used by the picker's "look up by GAM ID" control so a brand-
+	 * new / not-yet-delivered line item can be wired up even though it can't be discovered from the
+	 * report or the (targeting-less) list. The item is persisted in a durable option and dropped into
+	 * the live cache so it survives subsequent cache rebuilds.
+	 *
+	 * @param string $gam_id Numeric GAM line item ID.
+	 * @return array|WP_Error Mapped line item on success.
 	 */
-	private function is_active_line_item( $item ) {
-		if ( ! $this->is_active_status( $item['status'] ) ) {
-			return false;
+	public function lookup_line_item( $gam_id ) {
+		$gam_id = preg_replace( '/[^0-9]/', '', (string) $gam_id );
+		if ( $gam_id === '' ) {
+			return new WP_Error( 'bad_id', 'Enter a numeric GAM line item ID.' );
 		}
-		if ( ! empty( $item['end_time'] ) ) {
-			$end = strtotime( $item['end_time'] );
-			if ( $end && $end < time() ) {
-				return false;
+		if ( ! $this->is_configured() ) {
+			return new WP_Error( 'not_configured', 'GAM API credentials not configured.' );
+		}
+		$token = $this->get_access_token();
+		if ( is_wp_error( $token ) ) {
+			return $token;
+		}
+
+		$network_code = preg_replace( '/[^0-9]/', '', $this->network_code );
+		$body         = $this->gam_json_request( 'GET', self::GAM_REST_BASE . '/networks/' . $network_code . '/lineItems/' . $gam_id, $token );
+		if ( is_wp_error( $body ) ) {
+			return $body;
+		}
+
+		$item = $this->map_one_line_item( $body );
+		if ( $item['gam_id'] === '' ) {
+			return new WP_Error( 'not_found', 'No line item found for ID ' . $gam_id . ' on this network.' );
+		}
+
+		// Persist durably so cache rebuilds keep it, and update the live cache for immediate use.
+		$manual = get_option( self::OPTION_MANUAL_LI, array() );
+		if ( ! is_array( $manual ) ) {
+			$manual = array();
+		}
+		$manual[ $item['gam_id'] ] = $item;
+		update_option( self::OPTION_MANUAL_LI, $manual, false );
+
+		$cached = get_transient( self::CACHE_KEY );
+		if ( ! is_array( $cached ) ) {
+			$cached = array();
+		}
+		$found = false;
+		foreach ( $cached as &$c ) {
+			if ( isset( $c['gam_id'] ) && (string) $c['gam_id'] === $item['gam_id'] ) {
+				$c     = $item;
+				$found = true;
+				break;
 			}
 		}
-		return true;
+		unset( $c );
+		if ( ! $found ) {
+			$cached[] = $item;
+		}
+		set_transient( self::CACHE_KEY, $cached, self::CACHE_DURATION );
+
+		return $item;
 	}
 
 	/**

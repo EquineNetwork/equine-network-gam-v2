@@ -590,6 +590,12 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         <a id="engam-gam-li-wrap-link" href="<?php echo esc_url( $wrap_gam_link ); ?>" target="_blank" rel="noopener"
                            style="<?php echo $wrap_gam_link ? '' : 'display:none;'; ?>font-weight:700;text-decoration:none;margin-left:6px">View in GAM ↗</a>
                     </p>
+                    <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <input type="text" id="engam-gam-li-wrap-lookup" class="eg-input" placeholder="…or paste a GAM line item ID" style="max-width:240px" autocomplete="off">
+                        <button type="button" class="eg-btn sm dark" id="engam-gam-li-wrap-lookup-btn">Look up</button>
+                        <span id="engam-gam-li-wrap-lookup-msg" style="font-size:12px;color:#888"></span>
+                    </div>
+                    <p class="eg-hint" style="margin-top:4px">A brand-new line item won't appear in the search until it has delivered. Paste its GAM ID (the number after <code>line_item_id=</code> in the line item's URL) to wire it up now.</p>
                     <?php if ( ! is_array( $wrap_cached_li_all ) || empty( $wrap_cached_li_all ) ) : ?>
                     <p style="color:#cc8800;font-size:12px;margin:4px 0 0">No line items cached — go to <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-settings' ) ); ?>">Settings</a> and click Refresh Cache first.</p>
                     <?php endif; ?>
@@ -641,6 +647,39 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     document.addEventListener('click', function(e) {
                         if (e.target !== searchEl) results.style.display = 'none';
                     });
+
+                    // Direct GAM-ID lookup — for not-yet-delivered line items the search can't find.
+                    var lookupEl  = document.getElementById('engam-gam-li-wrap-lookup');
+                    var lookupBtn = document.getElementById('engam-gam-li-wrap-lookup-btn');
+                    var lookupMsg = document.getElementById('engam-gam-li-wrap-lookup-msg');
+                    function doLookup() {
+                        var raw = (lookupEl.value || '').replace(/[^0-9]/g, '');
+                        if (!raw) { lookupMsg.style.color = '#cc8800'; lookupMsg.textContent = 'Enter a numeric GAM line item ID.'; return; }
+                        var cfg = window.engamV2 || {};
+                        lookupMsg.style.color = '#888'; lookupMsg.textContent = 'Looking up…';
+                        if (lookupBtn) lookupBtn.disabled = true;
+                        fetch(cfg.ajaxUrl || '', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: 'action=engam_v2_lookup_line_item&nonce=' + encodeURIComponent(cfg.nonce || '') + '&line_item_id=' + encodeURIComponent(raw)
+                        })
+                        .then(function(r){ return r.json(); })
+                        .then(function(res){
+                            if (!res || !res.success) { lookupMsg.style.color = '#cc0000'; lookupMsg.textContent = (res && res.data) ? res.data : 'Lookup failed.'; return; }
+                            var li = res.data;
+                            idEl.value = li.gam_id;
+                            searchEl.value = li.name + ' (' + li.gam_id + ')';
+                            updateLink(li.gam_id);
+                            window.engamLineItems = window.engamLineItems || [];
+                            window.engamLineItems.push({ gam_id: li.gam_id, name: li.name, start: li.start_time, end: li.end_time });
+                            lookupMsg.style.color = '#3a7d22'; lookupMsg.textContent = '✓ Linked: ' + li.name;
+                            lookupEl.value = '';
+                        })
+                        .catch(function(){ lookupMsg.style.color = '#cc0000'; lookupMsg.textContent = 'Network error — try again.'; })
+                        .then(function(){ if (lookupBtn) lookupBtn.disabled = false; });
+                    }
+                    if (lookupBtn) lookupBtn.addEventListener('click', doLookup);
+                    if (lookupEl) lookupEl.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); doLookup(); } });
                 })();
                 </script>
 
