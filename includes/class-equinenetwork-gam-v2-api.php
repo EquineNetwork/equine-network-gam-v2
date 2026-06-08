@@ -290,27 +290,37 @@ class Equinenetwork_Gam_V2_API {
 	 * Fetches the line items for THIS site and caches them.
 	 *
 	 * GAM does not allow filtering the line items list by ad unit, and the list response omits the
-	 * targeting object — so the only way to get a per-site list is to run a GAM report scoped to the
-	 * site's ad unit(s). If the report path fails for any reason, we fall back to the full unfiltered
-	 * list so the dashboard stays populated rather than erroring or showing zero.
+	 * targeting object — so the per-site list comes from a GAM report scoped to the site's ad
+	 * unit(s). That report only returns line items that have actually DELIVERED on this inventory in
+	 * the last 90 days, so brand-new / not-yet-delivered line items are invisible to it. To make
+	 * those selectable immediately, we also pull the full network list and merge any live item the
+	 * report missed (deduped by GAM ID). If the report path fails entirely, we fall back to the
+	 * full list (live items only) so the dashboard stays populated rather than erroring or zeroing.
 	 */
 	private function fetch_line_items( $token ) {
 		$report_items = $this->run_ad_unit_report( $token );
-		if ( ! is_wp_error( $report_items ) ) {
-			usort( $report_items, function( $a, $b ) { return strcasecmp( $a['name'], $b['name'] ); } );
-			set_transient( self::CACHE_KEY, $report_items, self::CACHE_DURATION );
-			return $report_items;
-		}
 
-		// Fallback: full unfiltered list.
+		// Full network list — used to surface line items the delivery report cannot return yet.
 		$network_code = preg_replace( '/[^0-9]/', '', $this->network_code );
 		$base_url     = self::GAM_REST_BASE . '/networks/' . $network_code . '/lineItems';
 		$raw          = $this->list_line_items_raw( $token, $base_url, '' );
-		if ( is_wp_error( $raw ) ) {
-			return $raw;
+		$list_items   = is_wp_error( $raw ) ? array() : $this->map_raw_line_items( $raw );
+
+		if ( is_wp_error( $report_items ) ) {
+			// Report path unavailable — fall back to the full list (live items only).
+			if ( is_wp_error( $raw ) ) {
+				return $raw;
+			}
+			$items = array();
+			foreach ( $list_items as $li ) {
+				if ( $this->is_active_status( $li['status'] ) ) {
+					$items[] = $li;
+				}
+			}
+		} else {
+			$items = $this->merge_line_items( $report_items, $list_items );
 		}
 
-		$items = $this->map_raw_line_items( $raw );
 		usort( $items, function( $a, $b ) { return strcasecmp( $a['name'], $b['name'] ); } );
 
 		if ( ! empty( $items ) ) {
@@ -318,6 +328,38 @@ class Equinenetwork_Gam_V2_API {
 		}
 
 		return $items;
+	}
+
+	/**
+	 * Merges the full-list line items into the delivery-report results. Report rows win on
+	 * conflicts (they carry the real computed status from delivery). Any *live* line item the
+	 * report didn't return — typically new or not-yet-delivered items — is appended. Deduped by
+	 * GAM ID so an item never appears twice.
+	 *
+	 * @param array $report_items Mapped rows from the 90-day ad-unit report.
+	 * @param array $list_items   Mapped rows from the full network lineItems list.
+	 * @return array              Combined line item rows.
+	 */
+	private function merge_line_items( $report_items, $list_items ) {
+		$merged = $report_items;
+		$seen   = array();
+		foreach ( $report_items as $it ) {
+			if ( ! empty( $it['gam_id'] ) ) {
+				$seen[ (string) $it['gam_id'] ] = true;
+			}
+		}
+		foreach ( $list_items as $li ) {
+			$gid = isset( $li['gam_id'] ) ? (string) $li['gam_id'] : '';
+			if ( $gid === '' || isset( $seen[ $gid ] ) ) {
+				continue;
+			}
+			if ( ! $this->is_active_status( $li['status'] ) ) {
+				continue;
+			}
+			$seen[ $gid ] = true;
+			$merged[]     = $li;
+		}
+		return $merged;
 	}
 
 	/**
