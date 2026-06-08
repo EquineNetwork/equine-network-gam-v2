@@ -1647,6 +1647,53 @@ class Equinenetwork_Gam_V2_API {
 			$status = $it['status'] !== '' ? ' [' . $it['status'] . ']' : '';
 			$log[] = '   • ' . $it['name'] . ' (' . $it['gam_id'] . ')' . $status;
 		}
+
+		// Probe the full network list so we can see why the merge does/doesn't surface new
+		// (not-yet-delivered) line items: does the list response carry inventory targeting, and how
+		// many items resolve to THIS site's ad units?
+		$log[] = '';
+		$network_code = preg_replace( '/[^0-9]/', '', $this->network_code );
+		$raw          = $this->list_line_items_raw( $token, self::GAM_REST_BASE . '/networks/' . $network_code . '/lineItems', '' );
+		if ( is_wp_error( $raw ) ) {
+			$log[] = 'Full list probe: FAILED — ' . $raw->get_error_message();
+		} else {
+			$ad_unit_ids = array();
+			foreach ( $this->get_site_ad_unit_resources( $token ) as $r ) {
+				$ad_unit_ids[ (string) basename( $r ) ] = true;
+			}
+			$with_targeting = 0;
+			$on_site        = 0;
+			$with_dates     = 0;
+			$sample_keys    = '';
+			$sample_target  = '';
+			foreach ( $raw as $idx => $li ) {
+				if ( ! empty( $li['targeting']['inventoryTargeting']['targetedAdUnits'] ) ) {
+					$with_targeting++;
+					if ( $sample_target === '' ) {
+						$sample_target = wp_json_encode( $li['targeting']['inventoryTargeting']['targetedAdUnits'][0] );
+					}
+				}
+				if ( ! empty( $li['startTime'] ) || ! empty( $li['endTime'] ) ) {
+					$with_dates++;
+				}
+				if ( $this->line_item_targets_units( $li, $ad_unit_ids ) ) {
+					$on_site++;
+				}
+				if ( $idx === 0 ) {
+					$sample_keys = implode( ', ', array_keys( $li ) );
+				}
+			}
+			$log[] = 'Full list probe: ' . count( $raw ) . ' line items network-wide.';
+			$log[] = '   Site ad unit IDs: ' . ( $ad_unit_ids ? implode( ', ', array_keys( $ad_unit_ids ) ) : '(none resolved)' );
+			$log[] = '   With inventory targeting present: ' . $with_targeting;
+			$log[] = '   With flight dates present: ' . $with_dates;
+			$log[] = '   Resolving to THIS site: ' . $on_site;
+			$log[] = '   Sample item fields: ' . $sample_keys;
+			if ( $sample_target !== '' ) {
+				$log[] = '   Sample targetedAdUnit: ' . $sample_target;
+			}
+		}
+
 		return array( 'success' => true, 'message' => implode( "\n", $log ) );
 	}
 }
