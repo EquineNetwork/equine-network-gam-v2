@@ -12,6 +12,7 @@ class Equinenetwork_Gam_V2_Admin {
 		add_action( 'wp_ajax_engam_v2_refresh_cache',    array( $this, 'ajax_refresh_cache' ) );
 		add_action( 'wp_ajax_engam_v2_save_credentials', array( $this, 'ajax_save_credentials' ) );
 		add_action( 'wp_ajax_engam_v2_get_line_items',   array( $this, 'ajax_get_line_items' ) );
+		add_action( 'wp_ajax_engam_v2_lookup_line_item', array( $this, 'ajax_lookup_line_item' ) );
 		add_action( 'wp_ajax_engam_v2_test_sheets',      array( $this, 'ajax_test_sheets' ) );
 		add_action( 'wp_ajax_engam_v2_test_ms',          array( $this, 'ajax_test_ms' ) );
 		add_action( 'wp_ajax_engam_v2_ms_tabs',          array( $this, 'ajax_ms_tabs' ) );
@@ -252,6 +253,20 @@ class Equinenetwork_Gam_V2_Admin {
 			wp_send_json( array( 'success' => false, 'message' => $items->get_error_message() ) );
 		}
 		wp_send_json( array( 'success' => true, 'items' => $items ) );
+	}
+
+	public function ajax_lookup_line_item() {
+		check_ajax_referer( 'engam_v2_ajax', 'nonce' );
+		if ( ! current_user_can( 'edit_others_posts' ) ) wp_die( -1 );
+
+		$id   = isset( $_POST['line_item_id'] ) ? sanitize_text_field( wp_unslash( $_POST['line_item_id'] ) ) : '';
+		$api  = new Equinenetwork_Gam_V2_API();
+		$item = $api->lookup_line_item( $id );
+
+		if ( is_wp_error( $item ) ) {
+			wp_send_json_error( $item->get_error_message() );
+		}
+		wp_send_json_success( $item );
 	}
 
 	public function ajax_save_credentials() {
