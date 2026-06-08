@@ -620,7 +620,10 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         ajaxPost('engam_v2_ms_tabs', extra, function(data){
             if (tabRefresh) { tabRefresh.textContent = '↻ Load Tabs'; tabRefresh.disabled = false; }
             if (data && data.success && data.data && data.data.tabs && data.data.tabs.length) {
-                fillTabs(data.data.tabs, data.data.current || (tabValue ? tabValue.value : ''));
+                // Prefer the current UI selection over the DB default so Load Tabs / auto-load
+                // never resets a tab the user has already picked.
+                var preferred = (tabValue && tabValue.value) || data.data.current || '';
+                fillTabs(data.data.tabs, preferred);
             }
             // On failure, leave the text input visible — Test Connection shows why.
         });
