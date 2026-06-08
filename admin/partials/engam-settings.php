@@ -358,28 +358,14 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 <h2>3. Sponsor ID Spreadsheet</h2>
                 <p>Connect your sponsorship ID sheet to populate the "Lock to Sponsor" dropdowns and the Carousels list.</p>
             </div>
-            <span class="eg-tag" style="<?php echo ( $ms_active || $sheets_configured ) ? '' : 'background:#111;color:#d0ff00;'; ?>">
-                <?php echo $ms_active ? 'SharePoint' : ( $sheets_configured ? 'CSV' : 'Setup' ); ?>
+            <span class="eg-tag" style="<?php echo $ms_active ? '' : 'background:#111;color:#d0ff00;'; ?>">
+                <?php echo $ms_active ? 'SharePoint' : 'Setup'; ?>
             </span>
         </div>
         <div class="eg-body">
 
-            <!-- Source toggle -->
-            <div style="display:flex;gap:0;margin-bottom:20px;border:1px solid #deded8;border-radius:6px;overflow:hidden">
-                <button type="button" id="engam-src-ms"
-                    onclick="engamSetSource('ms')"
-                    style="flex:1;padding:9px 0;font-size:13px;font-weight:700;border:none;cursor:pointer;background:<?php echo $sponsor_source === 'ms' ? '#050505' : '#fff'; ?>;color:<?php echo $sponsor_source === 'ms' ? '#d0ff00' : '#555'; ?>;transition:background .15s,color .15s">
-                    Microsoft 365 (SharePoint)
-                </button>
-                <button type="button" id="engam-src-csv"
-                    onclick="engamSetSource('csv')"
-                    style="flex:1;padding:9px 0;font-size:13px;font-weight:700;border:none;border-left:1px solid #deded8;cursor:pointer;background:<?php echo $sponsor_source === 'csv' ? '#050505' : '#fff'; ?>;color:<?php echo $sponsor_source === 'csv' ? '#d0ff00' : '#555'; ?>;transition:background .15s,color .15s">
-                    CSV URL (legacy)
-                </button>
-            </div>
-
-            <!-- MICROSOFT 365 SECTION -->
-            <div id="engam-src-ms-body" style="<?php echo $sponsor_source !== 'ms' ? 'display:none' : ''; ?>">
+            <!-- MICROSOFT 365 (SharePoint) -->
+            <div id="engam-src-ms-body">
                 <form method="post" action="" id="engam-ms-form">
                     <?php wp_nonce_field( 'engam_v2_settings_save', 'engam_v2_settings_nonce' ); ?>
                     <input type="hidden" name="engam_form" value="ms_sponsor">
@@ -411,14 +397,13 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     <!-- Step 2 -->
                     <div style="margin-bottom:18px;max-width:320px">
                         <div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Step 2 &mdash; Select worksheet tab</div>
-                        <!-- Hidden input always carries the saved value for form submission -->
-                        <input type="hidden" name="engam_v2_ms_sheet_name" id="engam-ms-sheet-value"
-                            value="<?php echo esc_attr( $ms_sheet ); ?>">
-                        <!-- Select shown once tabs are loaded; text input shown as fallback -->
-                        <select class="eg-input" id="engam-ms-sheet-select" style="display:none">
+                        <!-- Both controls share the field name so the visible one submits its value
+                             natively — no JavaScript sync needed. The hidden one is disabled so it
+                             never posts. Select is used once tabs load; text input is the fallback. -->
+                        <select class="eg-input" name="engam_v2_ms_sheet_name" id="engam-ms-sheet-select" style="display:none" disabled>
                             <option value="<?php echo esc_attr( $ms_sheet ); ?>"><?php echo esc_html( $ms_sheet ); ?></option>
                         </select>
-                        <input class="eg-input" type="text" id="engam-ms-sheet" autocomplete="off"
+                        <input class="eg-input" type="text" name="engam_v2_ms_sheet_name" id="engam-ms-sheet" autocomplete="off"
                             value="<?php echo esc_attr( $ms_sheet ); ?>"
                             placeholder="e.g. EQUUS">
                         <p class="eg-hint" id="engam-ms-sheet-hint" style="margin-top:6px">Click &ldquo;Load Tabs&rdquo; above to populate this dropdown.</p>
@@ -431,28 +416,6 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         <button type="button" class="eg-btn dark" style="border-color:#111" id="engam-ms-test-btn">Test Connection</button>
                     </div>
                     <div id="engam-ms-status" style="display:none;margin-top:12px;padding:10px 14px;font-size:13px;font-weight:700;border-radius:6px"></div>
-                </form>
-            </div>
-
-            <!-- CSV SECTION (legacy) -->
-            <div id="engam-src-csv-body" style="<?php echo $sponsor_source !== 'csv' ? 'display:none' : ''; ?>">
-                <form method="post" action="">
-                    <?php wp_nonce_field( 'engam_v2_settings_save', 'engam_v2_settings_nonce' ); ?>
-                    <input type="hidden" name="engam_form" value="sheets">
-                    <div class="eg-settings-field">
-                        <label for="engam-sheet-csv-url">Published CSV URL</label>
-                        <input class="eg-input" type="url" name="engam_v2_sheet_csv_url" id="engam-sheet-csv-url"
-                            value="<?php echo esc_attr( $sheet_csv_url ); ?>"
-                            placeholder="https://docs.google.com/spreadsheets/d/e/…/pub?…&output=csv">
-                        <p class="eg-hint">In Google Sheets: <strong>File &rarr; Share &rarr; Publish to web &rarr; CSV &rarr; Publish</strong>. Paste that link here.</p>
-                    </div>
-                    <div style="display:flex;gap:10px;flex-wrap:wrap">
-                        <button type="submit" class="eg-btn" style="flex:1;justify-content:center;display:flex">Save</button>
-                        <?php if ( $sheets_configured ) : ?>
-                        <button type="button" class="eg-btn dark" style="border-color:#111" id="engam-sheets-test-btn">Test &amp; Refresh</button>
-                        <?php endif; ?>
-                    </div>
-                    <div id="engam-sheets-status" style="display:none;margin-top:12px;padding:10px 14px;font-size:13px;font-weight:700;border-radius:6px"></div>
                 </form>
             </div>
 
@@ -534,22 +497,6 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 (function(){
     var NONCE = '<?php echo esc_js( wp_create_nonce( 'engam_v2_admin' ) ); ?>';
 
-    // ── Source toggle ──────────────────────────────────────────────────
-    window.engamSetSource = function(src) {
-        var ms  = document.getElementById('engam-src-ms');
-        var csv = document.getElementById('engam-src-csv');
-        var msB  = document.getElementById('engam-src-ms-body');
-        var csvB = document.getElementById('engam-src-csv-body');
-        if (!ms || !csv || !msB || !csvB) return;
-        var on = '#050505', off = '#fff', ont = '#d0ff00', offt = '#555';
-        ms.style.background  = src === 'ms'  ? on  : off;
-        ms.style.color       = src === 'ms'  ? ont : offt;
-        csv.style.background = src === 'csv' ? on  : off;
-        csv.style.color      = src === 'csv' ? ont : offt;
-        msB.style.display    = src === 'ms'  ? '' : 'none';
-        csvB.style.display   = src === 'csv' ? '' : 'none';
-    };
-
     function ajaxPost(action, extra, cb) {
         fetch(ajaxurl, {
             method: 'POST',
@@ -571,33 +518,14 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
     }
 
     // ── Worksheet/tab picker ──────────────────────────────────────────
-    var tabValue   = document.getElementById('engam-ms-sheet-value');   // hidden input → form value
-    var tabSelect  = document.getElementById('engam-ms-sheet-select');  // <select> shown when loaded
-    var tabText    = document.getElementById('engam-ms-sheet');         // text input fallback
+    // The <select> and the text input share name="engam_v2_ms_sheet_name".
+    // Whichever is active (enabled + visible) submits its value natively — no
+    // JS sync into a hidden field, so a missed change event can't blank it out.
+    var tabSelect  = document.getElementById('engam-ms-sheet-select');  // shown when tabs load
+    var tabText    = document.getElementById('engam-ms-sheet');         // text fallback
     var tabRefresh = document.getElementById('engam-ms-tabs-refresh');
     var tabHint    = document.getElementById('engam-ms-sheet-hint');
     var msFileUrl  = document.getElementById('engam-ms-file-url');
-
-    // Reads whichever tab control is currently visible (select once tabs are
-    // loaded, otherwise the text input). Single source of truth for the value.
-    function currentTabValue() {
-        if (tabSelect && tabSelect.style.display !== 'none') return tabSelect.value;
-        if (tabText) return tabText.value;
-        return tabValue ? tabValue.value : '';
-    }
-    function syncTabValue() {
-        if (tabValue) tabValue.value = currentTabValue();
-    }
-
-    // Keep the hidden value in sync whichever control is visible.
-    if (tabSelect) tabSelect.addEventListener('change', syncTabValue);
-    if (tabText)   tabText.addEventListener('input', syncTabValue);
-
-    // Belt-and-braces: force a sync the instant the form is submitted so the
-    // saved value always matches what the admin sees, even if a change event
-    // was missed (e.g. value set programmatically or autofilled).
-    var msForm = document.getElementById('engam-ms-form');
-    if (msForm) msForm.addEventListener('submit', syncTabValue);
 
     function fillTabs(tabs, current) {
         if (!tabSelect) return;
@@ -615,13 +543,13 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
             opt.value = current; opt.textContent = current; opt.selected = true;
             tabSelect.insertBefore(opt, tabSelect.firstChild);
         }
-        // Show the select, hide the text input.
+        // Activate the select (submits its own value); deactivate the text input
+        // so only one field with the shared name is posted.
+        if (current) tabSelect.value = current;
+        tabSelect.disabled = false;
         tabSelect.style.display = '';
-        if (tabText)  tabText.style.display = 'none';
-        if (tabHint)  tabHint.textContent   = 'Pick from your ' + tabs.length + ' tabs, or type a name not in the list.';
-        // Explicitly set the value so tabSelect.value is reliable regardless of browser.
-        if (current)  tabSelect.value = current;
-        if (tabValue) tabValue.value  = tabSelect.value;
+        if (tabText) { tabText.disabled = true; tabText.style.display = 'none'; }
+        if (tabHint) tabHint.textContent = 'Pick from your ' + tabs.length + ' tabs, or type a name not in the list.';
     }
 
     function loadTabs(force) {
@@ -633,9 +561,11 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         ajaxPost('engam_v2_ms_tabs', extra, function(data){
             if (tabRefresh) { tabRefresh.textContent = '↻ Load Tabs'; tabRefresh.disabled = false; }
             if (data && data.success && data.data && data.data.tabs && data.data.tabs.length) {
-                // Prefer the current UI selection over the DB default so Load Tabs / auto-load
-                // never resets a tab the user has already picked.
-                var preferred = (tabValue && tabValue.value) || data.data.current || '';
+                // Prefer the value already showing (select or text) over the DB default
+                // so Load Tabs / auto-load never resets a tab the user just picked.
+                var preferred = (tabSelect && !tabSelect.disabled && tabSelect.value)
+                             || (tabText && tabText.value)
+                             || data.data.current || '';
                 fillTabs(data.data.tabs, preferred);
             }
             // On failure, leave the text input visible — Test Connection shows why.
@@ -659,22 +589,9 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         });
     }
 
-    // Populate the tab list on load when SharePoint is the active source.
+    // Populate the tab list on load when a share link is already saved.
     <?php if ( $ms_active ) : ?>
     loadTabs(false);
     <?php endif; ?>
-
-    // ── CSV test button ────────────────────────────────────────────────
-    var testBtn = document.getElementById('engam-sheets-test-btn');
-    if (testBtn) {
-        testBtn.addEventListener('click', function(){
-            document.getElementById('engam-sheets-status').style.display = 'none';
-            testBtn.disabled = true; testBtn.textContent = 'Testing…';
-            ajaxPost('engam_v2_test_sheets', '', function(data){
-                showStatus('engam-sheets-status', data);
-                testBtn.disabled = false; testBtn.textContent = 'Test & Refresh';
-            });
-        });
-    }
 })();
 </script>
