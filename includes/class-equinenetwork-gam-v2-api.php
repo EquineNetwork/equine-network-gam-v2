@@ -289,36 +289,93 @@ class Equinenetwork_Gam_V2_API {
 	/**
 	 * Fetches the line items for THIS site and caches them.
 	 *
-	 * GAM does not allow filtering the line items list by ad unit, and the list response omits the
-	 * targeting object — so the per-site list comes from a GAM report scoped to the site's ad
-	 * unit(s). That report only returns line items that have actually DELIVERED on this inventory in
-	 * the last 90 days, so brand-new / not-yet-delivered line items are invisible to it. To make
-	 * those selectable immediately, we also pull the full network list and merge any live item the
-	 * report missed (deduped by GAM ID). If the report path fails entirely, we fall back to the
-	 * full list (live items only) so the dashboard stays populated rather than erroring or zeroing.
+	 * The per-site list comes from a GAM report scoped to the site's ad unit(s). That report only
+	 * returns line items that have actually DELIVERED on this inventory in the last 90 days, so
+	 * brand-new / not-yet-delivered line items are invisible to it. To make those selectable
+	 * immediately we also pull the full network list and merge in any *site-targeted*, currently-
+	 * flighting item the report missed (deduped by GAM ID). The full list is scoped to this site's
+	 * ad units via each line item's own inventory targeting — without that scope the merge would
+	 * dump every line item in the network into the picker. The list also carries flight dates, which
+	 * the report omits, so we use it to backfill start/end on the report rows too (the takeover
+	 * uses those dates to stop serving automatically when the GAM flight ends).
 	 */
 	private function fetch_line_items( $token ) {
 		$report_items = $this->run_ad_unit_report( $token );
 
-		// Full network list — used to surface line items the delivery report cannot return yet.
+		// Full network list — gives us flight dates and lets us catch site-targeted line items the
+		// delivery report cannot return yet (new / not-yet-delivered).
 		$network_code = preg_replace( '/[^0-9]/', '', $this->network_code );
 		$base_url     = self::GAM_REST_BASE . '/networks/' . $network_code . '/lineItems';
 		$raw          = $this->list_line_items_raw( $token, $base_url, '' );
-		$list_items   = is_wp_error( $raw ) ? array() : $this->map_raw_line_items( $raw );
+		if ( is_wp_error( $raw ) ) {
+			$raw = array();
+		}
+
+		// Numeric IDs of this site's ad units (root + direct children), used to scope the list.
+		$ad_unit_ids = array();
+		foreach ( $this->get_site_ad_unit_resources( $token ) as $r ) {
+			$ad_unit_ids[ (string) basename( $r ) ] = true;
+		}
+
+		// Index the raw list by GAM ID with mapped fields + a "targets this site" flag.
+		$filter_keyword = strtolower( get_option( 'equinenetwork_gam_v2_filter', '' ) );
+		$list_index     = array();
+		foreach ( $raw as $li ) {
+			$mapped = $this->map_one_line_item( $li );
+			if ( $mapped['gam_id'] === '' ) {
+				continue;
+			}
+			if ( $filter_keyword
+				&& stripos( $mapped['name'], $filter_keyword ) === false
+				&& stripos( (string) $mapped['id'], $filter_keyword ) === false ) {
+				continue;
+			}
+			$list_index[ $mapped['gam_id'] ] = array(
+				'item'    => $mapped,
+				'on_site' => $this->line_item_targets_units( $li, $ad_unit_ids ),
+			);
+		}
 
 		if ( is_wp_error( $report_items ) ) {
-			// Report path unavailable — fall back to the full list (live items only).
-			if ( is_wp_error( $raw ) ) {
-				return $raw;
-			}
+			// Report path unavailable — fall back to the site-targeted, currently-live list items.
 			$items = array();
-			foreach ( $list_items as $li ) {
-				if ( $this->is_active_status( $li['status'] ) ) {
-					$items[] = $li;
+			foreach ( $list_index as $entry ) {
+				if ( $entry['on_site'] && $this->is_active_line_item( $entry['item'] ) ) {
+					$items[] = $entry['item'];
 				}
 			}
+			if ( empty( $items ) ) {
+				return $report_items; // nothing usable — surface the original report error
+			}
 		} else {
-			$items = $this->merge_line_items( $report_items, $list_items );
+			$items = $report_items;
+			$seen  = array();
+
+			// Backfill flight dates onto report rows (the report doesn't return them).
+			foreach ( $items as &$it ) {
+				$gid = isset( $it['gam_id'] ) ? (string) $it['gam_id'] : '';
+				if ( $gid === '' ) {
+					continue;
+				}
+				$seen[ $gid ] = true;
+				if ( isset( $list_index[ $gid ] ) ) {
+					$li = $list_index[ $gid ]['item'];
+					if ( empty( $it['start_time'] ) ) $it['start_time'] = $li['start_time'];
+					if ( empty( $it['end_time'] ) )   $it['end_time']   = $li['end_time'];
+				}
+			}
+			unset( $it );
+
+			// Append site-targeted, currently-live items the report didn't return.
+			foreach ( $list_index as $gid => $entry ) {
+				if ( isset( $seen[ $gid ] ) || ! $entry['on_site'] ) {
+					continue;
+				}
+				if ( ! $this->is_active_line_item( $entry['item'] ) ) {
+					continue;
+				}
+				$items[] = $entry['item'];
+			}
 		}
 
 		usort( $items, function( $a, $b ) { return strcasecmp( $a['name'], $b['name'] ); } );
@@ -331,63 +388,66 @@ class Equinenetwork_Gam_V2_API {
 	}
 
 	/**
-	 * Merges the full-list line items into the delivery-report results. Report rows win on
-	 * conflicts (they carry the real computed status from delivery). Any *live* line item the
-	 * report didn't return — typically new or not-yet-delivered items — is appended. Deduped by
-	 * GAM ID so an item never appears twice.
-	 *
-	 * @param array $report_items Mapped rows from the 90-day ad-unit report.
-	 * @param array $list_items   Mapped rows from the full network lineItems list.
-	 * @return array              Combined line item rows.
+	 * Whether a mapped list item should appear in the picker: a live status (delivering / ready /
+	 * paused, or unknown) AND not past its flight end date. Keeps the per-site list to current and
+	 * upcoming line items rather than every item that ever targeted the site.
 	 */
-	private function merge_line_items( $report_items, $list_items ) {
-		$merged = $report_items;
-		$seen   = array();
-		foreach ( $report_items as $it ) {
-			if ( ! empty( $it['gam_id'] ) ) {
-				$seen[ (string) $it['gam_id'] ] = true;
+	private function is_active_line_item( $item ) {
+		if ( ! $this->is_active_status( $item['status'] ) ) {
+			return false;
+		}
+		if ( ! empty( $item['end_time'] ) ) {
+			$end = strtotime( $item['end_time'] );
+			if ( $end && $end < time() ) {
+				return false;
 			}
 		}
-		foreach ( $list_items as $li ) {
-			$gid = isset( $li['gam_id'] ) ? (string) $li['gam_id'] : '';
-			if ( $gid === '' || isset( $seen[ $gid ] ) ) {
-				continue;
-			}
-			if ( ! $this->is_active_status( $li['status'] ) ) {
-				continue;
-			}
-			$seen[ $gid ] = true;
-			$merged[]     = $li;
-		}
-		return $merged;
+		return true;
 	}
 
 	/**
-	 * Maps raw GAM lineItems.list objects into the shape the rest of the plugin expects.
+	 * True if a raw GAM line item targets any of the given numeric ad unit IDs via its inventory
+	 * targeting. The v1 REST list returns targeting inline, so we can scope to this site without a
+	 * report. v1 uses the resource-name field "adUnit" (…/adUnits/ID); legacy uses numeric "adUnitId".
+	 *
+	 * @param array $li          Raw GAM line item.
+	 * @param array $ad_unit_ids Map of numeric ad unit ID => true.
 	 */
-	private function map_raw_line_items( $raw ) {
-		$filter_keyword = strtolower( get_option( 'equinenetwork_gam_v2_filter', '' ) );
-		$items          = array();
-		foreach ( $raw as $li ) {
-			$name  = isset( $li['name'] ) ? $li['name'] : '';
-			$id    = isset( $li['externalId'] ) && $li['externalId'] !== '' ? $li['externalId'] : basename( $name );
-			$label = isset( $li['displayName'] ) && $li['displayName'] !== '' ? $li['displayName'] : basename( $name );
-
-			if ( $filter_keyword && stripos( $label, $filter_keyword ) === false && stripos( $id, $filter_keyword ) === false ) {
-				continue;
-			}
-
-			$items[] = array(
-				'id'            => $id,
-				'gam_id'        => $name !== '' ? basename( $name ) : '',
-				'name'          => $label,
-				'status'        => isset( $li['entityStatus'] ) ? $li['entityStatus'] : ( isset( $li['deliveryStatus'] ) ? $li['deliveryStatus'] : ( isset( $li['status'] ) ? $li['status'] : '' ) ),
-				'resource_name' => $name,
-				'start_time'    => isset( $li['startTime'] ) ? $li['startTime'] : '',
-				'end_time'      => isset( $li['endTime'] )   ? $li['endTime']   : '',
-			);
+	private function line_item_targets_units( $li, $ad_unit_ids ) {
+		if ( empty( $ad_unit_ids ) || empty( $li['targeting']['inventoryTargeting']['targetedAdUnits'] ) ) {
+			return false;
 		}
-		return $items;
+		foreach ( $li['targeting']['inventoryTargeting']['targetedAdUnits'] as $t ) {
+			$tid = '';
+			if ( isset( $t['adUnit'] ) && $t['adUnit'] !== '' ) {
+				$tid = (string) basename( $t['adUnit'] );
+			} elseif ( isset( $t['adUnitId'] ) ) {
+				$tid = (string) $t['adUnitId'];
+			}
+			if ( $tid !== '' && isset( $ad_unit_ids[ $tid ] ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Maps a single raw GAM lineItems.list object into the shape the rest of the plugin expects.
+	 */
+	private function map_one_line_item( $li ) {
+		$name  = isset( $li['name'] ) ? $li['name'] : '';
+		$id    = isset( $li['externalId'] ) && $li['externalId'] !== '' ? $li['externalId'] : basename( $name );
+		$label = isset( $li['displayName'] ) && $li['displayName'] !== '' ? $li['displayName'] : basename( $name );
+
+		return array(
+			'id'            => $id,
+			'gam_id'        => $name !== '' ? basename( $name ) : '',
+			'name'          => $label,
+			'status'        => isset( $li['entityStatus'] ) ? $li['entityStatus'] : ( isset( $li['deliveryStatus'] ) ? $li['deliveryStatus'] : ( isset( $li['status'] ) ? $li['status'] : '' ) ),
+			'resource_name' => $name,
+			'start_time'    => isset( $li['startTime'] ) ? $li['startTime'] : '',
+			'end_time'      => isset( $li['endTime'] )   ? $li['endTime']   : '',
+		);
 	}
 
 	/**

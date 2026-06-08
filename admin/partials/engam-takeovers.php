@@ -164,7 +164,7 @@ if ( is_array( $cached_li ) ) {
 }
 
 // Helper: compute status label
-function engam_to_status( $t ) {
+function engam_to_status( $t, $gam_line_item_map = array() ) {
     // An entry with no GAM line item has nothing to deliver — it can never be
     // "Active" no matter what the active flag says.
     if ( empty( $t['gam_line_item_id'] ) ) return array( 'inactive', 'No Line Item' );
@@ -172,6 +172,25 @@ function engam_to_status( $t ) {
     $now   = current_time( 'timestamp' );
     $start = ! empty( $t['schedule_start'] ) ? strtotime( $t['schedule_start'] ) : 0;
     $end   = ! empty( $t['schedule_end'] )   ? strtotime( $t['schedule_end'] )   : 0;
+
+    // Wraps store no schedule of their own — inherit the linked GAM line item's flight window so
+    // the badge reflects the same start/stop the front end enforces. GAM dates are timezone-aware,
+    // so compare against UTC time rather than WP-local.
+    if ( ( ! $start || ! $end ) ) {
+        $li = $gam_line_item_map[ (string) $t['gam_line_item_id'] ] ?? null;
+        if ( $li ) {
+            $utc_now = time();
+            if ( ! $start && ! empty( $li['start_time'] ) ) {
+                $ls = strtotime( $li['start_time'] );
+                if ( $ls && $utc_now < $ls ) return array( 'scheduled', 'Scheduled' );
+            }
+            if ( ! $end && ! empty( $li['end_time'] ) ) {
+                $le = strtotime( $li['end_time'] );
+                if ( $le && $utc_now > $le ) return array( 'expired', 'Expired' );
+            }
+        }
+    }
+
     if ( $start && $now < $start ) return array( 'scheduled', 'Scheduled' );
     if ( $end   && $now > $end   ) return array( 'expired',   'Expired'   );
     return array( 'active', 'Active' );
@@ -267,7 +286,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 <?php
                 $engam_list_net = preg_replace( '/[^0-9]/', '', get_option( 'equinenetwork_gam_v2_id', '' ) );
                 foreach ( $takeovers as $to ) :
-                    list( $badge_class, $badge_label ) = engam_to_status( $to );
+                    list( $badge_class, $badge_label ) = engam_to_status( $to, $gam_line_item_map );
                     $to_type   = isset( $to['type'] ) ? $to['type'] : 'wrap';
 
                     // Pull flight dates from GAM line item if available (mastheads and GAM-linked wraps).
