@@ -344,9 +344,16 @@ class Equinenetwork_Gam_V2_Admin {
 		if ( ! current_user_can( 'manage_options' ) ) wp_die( -1 );
 
 		require_once EQUINENETWORK_GAM_V2_PATH . 'includes/class-equinenetwork-gam-v2-api.php';
-		$api   = new Equinenetwork_Gam_V2_API();
-		$force = ! empty( $_POST['force'] );
-		$tabs  = $api->list_worksheet_names( $force );
+		$api         = new Equinenetwork_Gam_V2_API();
+		$force       = ! empty( $_POST['force'] );
+		$preview_url = isset( $_POST['url'] ) ? esc_url_raw( wp_unslash( $_POST['url'] ) ) : '';
+
+		// When a URL is passed (before saving), fetch tabs directly from that link.
+		if ( $preview_url && ! $api->is_ms_configured() ) {
+			$tabs = $api->list_worksheet_names_for_link( $preview_url );
+		} else {
+			$tabs = $api->list_worksheet_names( $force );
+		}
 
 		if ( is_wp_error( $tabs ) ) {
 			wp_send_json_error( $tabs->get_error_message() );
