@@ -47,11 +47,49 @@ class Equinenetwork_Gam_V2_Takeover {
         if ( empty( $to['active'] ) ) return false;
         if ( empty( $to['gam_line_item_id'] ) ) return false;
         if ( null === $now ) $now = current_time( 'timestamp' );
+
+        // Explicit (stored) schedule — used by mastheads. Naive local datetime strings.
         $start = ! empty( $to['schedule_start'] ) ? strtotime( $to['schedule_start'] ) : 0;
         $end   = ! empty( $to['schedule_end'] )   ? strtotime( $to['schedule_end'] )   : 0;
         if ( $start && $now < $start ) return false;
         if ( $end   && $now > $end   ) return false;
+
+        // No stored schedule (wraps don't store one) — inherit the linked GAM line item's flight
+        // window so the takeover starts and stops automatically with the GAM flight. GAM timestamps
+        // are timezone-aware (RFC3339), so they're compared against real UTC time, not WP-local.
+        if ( ! $start || ! $end ) {
+            $li = self::gam_line_item_flight( $to['gam_line_item_id'] );
+            if ( $li ) {
+                $utc_now = time();
+                if ( ! $start && ! empty( $li['start_time'] ) ) {
+                    $li_start = strtotime( $li['start_time'] );
+                    if ( $li_start && $utc_now < $li_start ) return false;
+                }
+                if ( ! $end && ! empty( $li['end_time'] ) ) {
+                    $li_end = strtotime( $li['end_time'] );
+                    if ( $li_end && $utc_now > $li_end ) return false;
+                }
+            }
+        }
         return true;
+    }
+
+    /**
+     * Looks up a cached GAM line item by its numeric ID and returns its flight dates (or null).
+     * Used so wraps inherit their schedule from GAM without storing a copy that can go stale.
+     */
+    public static function gam_line_item_flight( $gam_id ) {
+        $cached = get_transient( 'engam_v2_line_items' );
+        if ( ! is_array( $cached ) ) return null;
+        $gam_id = (string) $gam_id;
+        foreach ( $cached as $li ) {
+            $by_gam = isset( $li['gam_id'] ) ? (string) $li['gam_id'] : '';
+            $by_id  = isset( $li['id'] ) ? (string) $li['id'] : '';
+            if ( $by_gam === $gam_id || strcasecmp( $by_id, $gam_id ) === 0 ) {
+                return $li;
+            }
+        }
+        return null;
     }
 
     /**
