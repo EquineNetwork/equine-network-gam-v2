@@ -150,11 +150,15 @@ if ( isset( $_POST['engam_v2_settings_nonce'] ) && wp_verify_nonce( sanitize_tex
         $notice = 'Sponsor Sheet saved.';
     }
     if ( current_user_can( 'manage_options' ) && 'ms_sponsor' === $form ) {
-        update_option( 'engam_v2_ms_tenant_id',     sanitize_text_field( wp_unslash( $_POST['engam_v2_ms_tenant_id']     ?? '' ) ) );
-        update_option( 'engam_v2_ms_client_id',     sanitize_text_field( wp_unslash( $_POST['engam_v2_ms_client_id']     ?? '' ) ) );
-        update_option( 'engam_v2_ms_file_url',      esc_url_raw( wp_unslash( $_POST['engam_v2_ms_file_url']              ?? '' ) ) );
-        update_option( 'engam_v2_ms_sheet_name',    sanitize_text_field( wp_unslash( $_POST['engam_v2_ms_sheet_name']    ?? '' ) ) );  // blank until the admin picks a tab
-        // Only overwrite the secret if a new value was submitted (preserve existing on blank).
+        // Only overwrite Azure fields when they are present in the POST (the UI may have removed them).
+        if ( isset( $_POST['engam_v2_ms_tenant_id'] ) ) {
+            update_option( 'engam_v2_ms_tenant_id', sanitize_text_field( wp_unslash( $_POST['engam_v2_ms_tenant_id'] ) ) );
+        }
+        if ( isset( $_POST['engam_v2_ms_client_id'] ) ) {
+            update_option( 'engam_v2_ms_client_id', sanitize_text_field( wp_unslash( $_POST['engam_v2_ms_client_id'] ) ) );
+        }
+        update_option( 'engam_v2_ms_file_url',   esc_url_raw( wp_unslash( $_POST['engam_v2_ms_file_url']           ?? '' ) ) );
+        update_option( 'engam_v2_ms_sheet_name', sanitize_text_field( wp_unslash( $_POST['engam_v2_ms_sheet_name'] ?? '' ) ) );
         $new_secret = sanitize_text_field( wp_unslash( $_POST['engam_v2_ms_client_secret'] ?? '' ) );
         if ( $new_secret !== '' ) {
             update_option( 'engam_v2_ms_client_secret', $new_secret );
@@ -237,7 +241,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
     <div class="eg-card" style="margin-top:18px">
         <div class="eg-head">
             <div>
-                <h2>GAM Settings</h2>
+                <h2>1. GAM Settings</h2>
                 <p>Core configuration for this site.</p>
             </div>
             <span class="eg-tag"><?php echo $id_active ? 'Configured' : 'Setup'; ?></span>
@@ -270,7 +274,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
     <div class="eg-card" style="margin-top:18px">
         <div class="eg-head">
             <div>
-                <h2>GAM API</h2>
+                <h2>2. GAM API</h2>
                 <p><?php echo $api_configured ? 'Credentials active. API is live.' : 'Paste your service account JSON key to enable live campaign sync.'; ?></p>
             </div>
             <span class="eg-tag" style="<?php echo $api_configured ? '' : 'background:#111;color:#d0ff00;'; ?>"><?php echo $api_configured ? 'Active' : 'Setup'; ?></span>
@@ -351,7 +355,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
     <div class="eg-card">
         <div class="eg-head">
             <div>
-                <h2>Sponsor ID Spreadsheet</h2>
+                <h2>3. Sponsor ID Spreadsheet</h2>
                 <p>Connect your sponsorship ID sheet to populate the "Lock to Sponsor" dropdowns and the Carousels list.</p>
             </div>
             <span class="eg-tag" style="<?php echo ( $ms_active || $sheets_configured ) ? '' : 'background:#111;color:#d0ff00;'; ?>">
@@ -391,24 +395,22 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     </div>
                     <?php endif; ?>
 
-                    <p class="eg-hint" style="margin:0 0 14px">
-                        If your sheet is shared with <strong>&ldquo;Anyone with the link&rdquo;</strong>, just paste that link and the tab name below &mdash; no Azure setup needed.
-                    </p>
-
-                    <div class="eg-settings-field" style="margin-bottom:14px">
-                        <label for="engam-ms-file-url">SharePoint Share Link</label>
-                        <input class="eg-input" type="url" name="engam_v2_ms_file_url" id="engam-ms-file-url"
-                            value="<?php echo esc_attr( $ms_file_url ); ?>"
-                            placeholder="https://equinenetwork.sharepoint.com/:x:/s/Home/...">
-                        <p class="eg-hint">In Excel/SharePoint click <strong>Share &rarr; Copy link</strong>. Make sure it reads <strong>&ldquo;Anyone with the link&rdquo;</strong>, then paste it here. (View-only is fine &mdash; the plugin only reads.)</p>
+                    <!-- Step 1 -->
+                    <div style="margin-bottom:18px">
+                        <div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Step 1 &mdash; Paste your SharePoint share link</div>
+                        <div style="display:flex;gap:8px;align-items:stretch">
+                            <input class="eg-input" type="url" name="engam_v2_ms_file_url" id="engam-ms-file-url"
+                                value="<?php echo esc_attr( $ms_file_url ); ?>"
+                                placeholder="https://equinenetwork.sharepoint.com/:x:/s/Home/..."
+                                style="flex:1;margin:0">
+                            <button type="button" id="engam-ms-tabs-refresh"
+                                style="white-space:nowrap;padding:0 14px;font-size:12px;font-weight:700;border:2px solid #111;background:#fff;cursor:pointer;border-radius:4px;flex-shrink:0;line-height:1">&#8635; Load Tabs</button>
+                        </div>
                     </div>
 
-                    <div class="eg-settings-field" style="margin-bottom:16px;max-width:320px">
-                        <label for="engam-ms-sheet" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-                            <span>Worksheet / Tab Name</span>
-                            <button type="button" id="engam-ms-tabs-refresh"
-                                style="display:none;border:none;background:none;padding:0;cursor:pointer;font-size:11px;font-weight:700;color:#555;text-transform:none;letter-spacing:0">&#8635; Refresh list</button>
-                        </label>
+                    <!-- Step 2 -->
+                    <div style="margin-bottom:18px;max-width:320px">
+                        <div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Step 2 &mdash; Select worksheet tab</div>
                         <!-- Hidden input always carries the saved value for form submission -->
                         <input type="hidden" name="engam_v2_ms_sheet_name" id="engam-ms-sheet-value"
                             value="<?php echo esc_attr( $ms_sheet ); ?>">
@@ -418,51 +420,12 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         </select>
                         <input class="eg-input" type="text" id="engam-ms-sheet" autocomplete="off"
                             value="<?php echo esc_attr( $ms_sheet ); ?>"
-                            placeholder="HR">
-                        <p class="eg-hint" id="engam-ms-sheet-hint">The tab name exactly as it appears in Excel (e.g. <code>HR</code>). Case-sensitive.</p>
+                            placeholder="e.g. EQUUS">
+                        <p class="eg-hint" id="engam-ms-sheet-hint" style="margin-top:6px">Click &ldquo;Load Tabs&rdquo; above to populate this dropdown.</p>
                     </div>
 
-                    <!-- Advanced: Azure (only needed when the file is NOT shared via "Anyone with the link") -->
-                    <details style="margin:0 0 16px;border:1px solid #deded8;border-radius:6px;overflow:hidden" <?php echo $ms_configured ? 'open' : ''; ?>>
-                        <summary style="padding:10px 14px;cursor:pointer;font-weight:700;font-size:13px;background:#f7f7f4;list-style:none;display:flex;justify-content:space-between;align-items:center">
-                            Private file? Advanced Microsoft (Azure) setup
-                            <span style="font-size:11px;font-weight:400;color:#888">requires a Microsoft admin</span>
-                        </summary>
-                        <div style="padding:14px">
-                            <p class="eg-hint" style="margin:0 0 12px">Only needed if the sheet <strong>cannot</strong> be shared with &ldquo;Anyone with the link.&rdquo; A Microsoft 365 / Azure admin must complete these steps:</p>
-                            <ol style="margin:0 0 14px 18px;padding:0;font-size:13px;line-height:1.6;color:#333">
-                                <li>Go to <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener" style="font-weight:700">portal.azure.com &rarr; Entra ID &rarr; App registrations</a> &rarr; <strong>New registration</strong>. Leave the redirect URI blank. Click <strong>Register</strong>.</li>
-                                <li>From the Overview page, copy the <strong>Directory (tenant) ID</strong> and <strong>Application (client) ID</strong>.</li>
-                                <li><strong>API permissions &rarr; Add a permission &rarr; Microsoft Graph &rarr; Application permissions</strong>. Add <code>Files.Read.All</code>, then click <strong>Grant admin consent</strong>.</li>
-                                <li><strong>Certificates &amp; secrets &rarr; New client secret</strong>. Copy the <strong>Value</strong> (not the ID) — it shows only once.</li>
-                            </ol>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-                                <div class="eg-settings-field">
-                                    <label for="engam-ms-tenant">Directory (Tenant) ID</label>
-                                    <input class="eg-input" type="text" name="engam_v2_ms_tenant_id" id="engam-ms-tenant"
-                                        value="<?php echo esc_attr( $ms_tenant ); ?>"
-                                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-                                </div>
-                                <div class="eg-settings-field">
-                                    <label for="engam-ms-client">Application (Client) ID</label>
-                                    <input class="eg-input" type="text" name="engam_v2_ms_client_id" id="engam-ms-client"
-                                        value="<?php echo esc_attr( $ms_client ); ?>"
-                                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-                                </div>
-                                <div class="eg-settings-field" style="grid-column:1 / -1">
-                                    <label for="engam-ms-secret">Client Secret Value</label>
-                                    <input class="eg-input" type="password" name="engam_v2_ms_client_secret" id="engam-ms-secret"
-                                        value=""
-                                        placeholder="<?php echo $ms_secret_set ? '(saved — leave blank to keep)' : 'Paste secret value here'; ?>"
-                                        autocomplete="new-password">
-                                    <?php if ( $ms_secret_set ) : ?>
-                                    <p class="eg-hint" style="margin-top:4px">A secret is saved. Leave blank to keep it, or paste a new value to replace it.</p>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
-                    </details>
-
+                    <!-- Step 3 -->
+                    <div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Step 3 &mdash; Test &amp; save</div>
                     <div style="display:flex;gap:10px;flex-wrap:wrap">
                         <button type="submit" class="eg-btn" style="flex:1;justify-content:center;display:flex">Save</button>
                         <button type="button" class="eg-btn dark" style="border-color:#111" id="engam-ms-test-btn">Test Connection</button>
@@ -500,7 +463,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
     <div class="eg-card">
     <div class="eg-head">
         <div>
-            <h2>Migrate Sponsor IDs from ACF</h2>
+            <h2>4. Migrate Sponsor IDs from ACF</h2>
             <p>One-time merge: copy sponsor IDs assigned with the legacy ACF fields (<code>sponlineitemid</code> / <code>sponsorship_id</code>) into this plugin — across posts, pages, categories, and tags — so they keep working after you delete those ACF fields.</p>
         </div>
         <span class="eg-tag"<?php echo $acf_candidate_count > 0 ? '' : ' style="background:#eee;color:#999"'; ?>><?php echo (int) $acf_candidate_count; ?> found</span>
@@ -641,18 +604,21 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         }
         // Show the select, hide the text input.
         tabSelect.style.display = '';
-        if (tabText)    tabText.style.display    = 'none';
-        if (tabRefresh) tabRefresh.style.display = '';
-        if (tabHint)    tabHint.textContent = 'Pick from your ' + tabs.length + ' tabs, or type a name not in the list.';
-        if (tabValue)   tabValue.value = tabSelect.value;
+        if (tabText)  tabText.style.display = 'none';
+        if (tabHint)  tabHint.textContent   = 'Pick from your ' + tabs.length + ' tabs, or type a name not in the list.';
+        // Explicitly set the value so tabSelect.value is reliable regardless of browser.
+        if (current)  tabSelect.value = current;
+        if (tabValue) tabValue.value  = tabSelect.value;
     }
 
     function loadTabs(force) {
         if (!tabSelect) return;
-        if (msFileUrl && !msFileUrl.value.trim()) return;
-        if (tabRefresh) tabRefresh.textContent = '↻ Loading…';
-        ajaxPost('engam_v2_ms_tabs', force ? '&force=1' : '', function(data){
-            if (tabRefresh) tabRefresh.textContent = '↻ Refresh list';
+        var urlVal = msFileUrl ? msFileUrl.value.trim() : '';
+        if (!urlVal) return;
+        if (tabRefresh) { tabRefresh.textContent = '↻ Loading…'; tabRefresh.disabled = true; }
+        var extra = (force ? '&force=1' : '') + '&url=' + encodeURIComponent(urlVal);
+        ajaxPost('engam_v2_ms_tabs', extra, function(data){
+            if (tabRefresh) { tabRefresh.textContent = '↻ Load Tabs'; tabRefresh.disabled = false; }
             if (data && data.success && data.data && data.data.tabs && data.data.tabs.length) {
                 fillTabs(data.data.tabs, data.data.current || (tabValue ? tabValue.value : ''));
             }

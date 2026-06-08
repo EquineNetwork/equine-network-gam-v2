@@ -1110,6 +1110,16 @@ class Equinenetwork_Gam_V2_API {
 	}
 
 	/**
+	 * Returns worksheet names for an arbitrary share-link URL without saving it.
+	 * Used by the settings page "Load Tabs" button before the URL is saved.
+	 */
+	public function list_worksheet_names_for_link( $url ) {
+		$binary = $this->ms_link_download( $url );
+		if ( is_wp_error( $binary ) ) return $binary;
+		return $this->xlsx_sheet_names( $binary );
+	}
+
+	/**
 	 * Reads active sponsors from the configured OneDrive/SharePoint Excel file.
 	 * Auto-detects the header row by looking for a row containing "Advertiser".
 	 */
