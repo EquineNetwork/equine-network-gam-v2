@@ -338,19 +338,4 @@ $metric_cards = array(
 
 </div><!-- .eg-content -->
 
-<!-- GUIDE — full bleed -->
-<div class="eg-card black eg-full-bleed" style="margin-top:18px">
-    <div class="eg-head" style="border-color:#2a2a2a">
-        <span class="eg-tag">Guide</span>
-    </div>
-    <div class="eg-body" style="font-size:13px;line-height:1.6;color:#d8d8d2;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0 48px">
-        <p style="margin:0 0 12px"><strong style="color:#C8FF00">1. GAM API</strong> syncs active line items automatically — no manual list to maintain.</p>
-        <p style="margin:0 0 12px"><strong style="color:#C8FF00">2. On any post or page</strong>, use the <strong style="color:#fff">EN Campaign</strong> sidebar panel to assign a sponsor ID that overrides all ads on that page.</p>
-        <p style="margin:0 0 12px"><strong style="color:#C8FF00">3. In Elementor</strong>, drop the <strong style="color:#fff">EN Ad Slot</strong> widget and pick a preset — the sponsor dropdown pulls from GAM live.</p>
-        <p style="margin:0 0 12px"><strong style="color:#C8FF00">4. Takeovers</strong> wrap the entire page — set a date range and upload brand images to run a full-site takeover.</p>
-        <p style="margin:0 0 12px"><strong style="color:#C8FF00">5. GAM handles</strong> creative scheduling, fallbacks, and targeting automatically.</p>
-    </div>
-    <div class="eg-accentline"></div>
-</div>
-
 </div><!-- #engam-v2-wrap -->

@@ -18,6 +18,9 @@
 #engam-v2-wrap .eg-content{padding:0 20px 2px}
 #engam-v2-wrap .eg-mast{background:var(--en-chrome);color:#fff;position:relative;overflow:hidden;padding:28px 32px;display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center;margin:0}
 #engam-v2-wrap .eg-full-bleed{margin-left:0;margin-right:0}
+/* Full-bleed cards span edge-to-edge, so square corners (and a square accent line). */
+#engam-v2-wrap .eg-card.eg-full-bleed{border-radius:0;box-shadow:none}
+#engam-v2-wrap .eg-full-bleed .eg-accentline{border-radius:0}
 #engam-v2-wrap .eg-brand{display:flex;align-items:center;gap:14px;position:relative;z-index:1}
 #engam-v2-wrap .eg-logo{width:48px;height:48px;flex-shrink:0;border-radius:10px;font-size:0;color:transparent;background:#0d0d0d url('<?php echo EQUINENETWORK_GAM_V2_URL; ?>admin/img/en-icon-dark.png') center/contain no-repeat}
 #engam-v2-wrap .eg-brand-text{position:relative;z-index:1}
