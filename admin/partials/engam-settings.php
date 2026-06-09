@@ -157,14 +157,14 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 <h2>2. GAM API</h2>
                 <p><?php echo $api_configured ? 'Credentials active. API is live.' : 'Paste your service account JSON key to enable live campaign sync.'; ?></p>
             </div>
-            <span class="eg-tag" style="<?php echo $api_configured ? '' : 'background:#111;color:#d0ff00;'; ?>"><?php echo $api_configured ? 'Active' : 'Setup'; ?></span>
+            <span class="eg-tag" style="<?php echo $api_configured ? '' : 'background:#111;color:#C8FF00;'; ?>"><?php echo $api_configured ? 'Active' : 'Setup'; ?></span>
         </div>
         <div class="eg-body">
 
             <?php if ( $credentials_in_const ) : ?>
             <!-- Constant-based credentials — no upload needed -->
-            <div style="background:#f7f7f4;border:1px solid #deded8;border-left:4px solid #050505;padding:14px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:12px">
-                <span style="flex-shrink:0;width:34px;height:34px;background:#050505;display:inline-flex;align-items:center;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 13l4 4L19 7" stroke="#d0ff00" stroke-width="3" stroke-linecap="square"/></svg></span>
+            <div style="background:#f7f7f4;border:1px solid #deded8;border-left:4px solid #111111;padding:14px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:12px">
+                <span style="flex-shrink:0;width:34px;height:34px;background:#111111;display:inline-flex;align-items:center;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 13l4 4L19 7" stroke="#C8FF00" stroke-width="3" stroke-linecap="square"/></svg></span>
                 <div>
                     <strong style="font-size:13px;display:block;margin-bottom:4px">Credentials loaded from <code>wp-config.php</code></strong>
                     <span style="font-size:12px;color:#555">The <code>ENGAM_GAM_CREDENTIALS_JSON</code> constant is defined on this server — no file upload needed. To update credentials, edit that constant in <code>wp-config.php</code>.</span>
@@ -182,8 +182,8 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 $acct_email   = $stored_creds['client_email'] ?? '';
                 $project_id   = $stored_creds['project_id']   ?? '';
             ?>
-                <div style="background:#f7f7f4;border:1px solid #deded8;border-left:4px solid #050505;padding:12px 14px;margin-bottom:14px;display:flex;align-items:flex-start;gap:10px">
-                    <span style="flex-shrink:0;width:30px;height:30px;background:#050505;display:inline-flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 13l4 4L19 7" stroke="#d0ff00" stroke-width="3" stroke-linecap="square"/></svg></span>
+                <div style="background:#f7f7f4;border:1px solid #deded8;border-left:4px solid #111111;padding:12px 14px;margin-bottom:14px;display:flex;align-items:flex-start;gap:10px">
+                    <span style="flex-shrink:0;width:30px;height:30px;background:#111111;display:inline-flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 13l4 4L19 7" stroke="#C8FF00" stroke-width="3" stroke-linecap="square"/></svg></span>
                     <div style="min-width:0">
                         <strong style="font-size:13px;display:block;margin-bottom:2px">Connected</strong>
                         <?php if ( $acct_email ) : ?>
@@ -206,11 +206,11 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 <label>Service Account JSON Key <?php echo $api_configured ? '<span style="color:#777;font-weight:400;text-transform:none;letter-spacing:0">(upload to replace)</span>' : ''; ?></label>
                 <div id="engam-upload-area" style="border:2px dashed #bbb;background:#f8f8f5;padding:10px 12px;cursor:pointer;transition:border-color .2s;display:flex;align-items:center;gap:10px"
                     onclick="document.getElementById('engam-credentials-file').click()"
-                    ondragover="event.preventDefault();this.style.borderColor='#050505'"
+                    ondragover="event.preventDefault();this.style.borderColor='#111111'"
                     ondragleave="this.style.borderColor='#bbb'"
                     ondrop="engamHandleDrop(event)">
                     <input type="file" id="engam-credentials-file" accept=".json,application/json" style="display:none" onchange="engamHandleFile(this.files[0])">
-                    <span style="flex-shrink:0;width:30px;height:30px;background:#050505;display:inline-flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4M5 20h14" stroke="#d0ff00" stroke-width="2.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></span>
+                    <span style="flex-shrink:0;width:30px;height:30px;background:#111111;display:inline-flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4M5 20h14" stroke="#C8FF00" stroke-width="2.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></span>
                     <div id="engam-upload-label" style="min-width:0">
                         <strong style="font-size:12px;display:block">Click to upload or drag &amp; drop</strong>
                         <span style="font-size:11px;color:#777">.json service account key file</span>
@@ -238,7 +238,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 <h2>3. Sponsor ID Spreadsheet</h2>
                 <p>Connect your sponsorship ID sheet to populate the "Lock to Sponsor" dropdowns and the Carousels list.</p>
             </div>
-            <span class="eg-tag" style="<?php echo $ms_active ? '' : 'background:#111;color:#d0ff00;'; ?>">
+            <span class="eg-tag" style="<?php echo $ms_active ? '' : 'background:#111;color:#C8FF00;'; ?>">
                 <?php echo $ms_active ? 'SharePoint' : 'Setup'; ?>
             </span>
         </div>
@@ -251,8 +251,8 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     <input type="hidden" name="engam_form" value="ms_sponsor">
 
                     <?php if ( $ms_active ) : ?>
-                    <div style="background:#f7f7f4;border:1px solid #deded8;border-left:4px solid #050505;padding:12px 14px;margin-bottom:18px;display:flex;align-items:flex-start;gap:10px">
-                        <span style="flex-shrink:0;width:30px;height:30px;background:#050505;display:inline-flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#d0ff00" stroke-width="3" stroke-linecap="square"/></svg></span>
+                    <div style="background:#f7f7f4;border:1px solid #deded8;border-left:4px solid #111111;padding:12px 14px;margin-bottom:18px;display:flex;align-items:flex-start;gap:10px">
+                        <span style="flex-shrink:0;width:30px;height:30px;background:#111111;display:inline-flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#C8FF00" stroke-width="3" stroke-linecap="square"/></svg></span>
                         <div>
                             <strong style="font-size:13px;display:block;margin-bottom:2px"><?php echo $ms_configured ? 'Connected via Microsoft Graph' : 'Connected via share link'; ?></strong>
                             <span style="font-size:12px;color:#555;word-break:break-all"><?php echo esc_html( $ms_file_url ); ?></span><br>
@@ -348,7 +348,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                             <td style="font-size:12px;color:#555"><?php echo esc_html( $s['kind'] ); ?><?php echo $s['meta'] ? ' &middot; ' . esc_html( $s['meta'] ) : ''; ?></td>
                             <td>
                                 <?php if ( ! empty( $s['edit'] ) ) : ?>
-                                    <a href="<?php echo esc_url( $s['edit'] ); ?>" style="font-weight:700;text-decoration:none;color:#050505"><?php echo esc_html( $s['title'] ); ?></a>
+                                    <a href="<?php echo esc_url( $s['edit'] ); ?>" style="font-weight:700;text-decoration:none;color:#111111"><?php echo esc_html( $s['title'] ); ?></a>
                                 <?php else : ?>
                                     <strong><?php echo esc_html( $s['title'] ); ?></strong>
                                 <?php endif; ?>
@@ -392,7 +392,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         if (!el) return;
         el.style.display    = 'block';
         el.style.background = data.success ? '#f7f7f4' : '#fde8e8';
-        el.style.borderLeft = data.success ? '4px solid #050505' : '4px solid #cc0000';
+        el.style.borderLeft = data.success ? '4px solid #111111' : '4px solid #cc0000';
         el.style.color      = data.success ? '#111' : '#9b1c1c';
         el.textContent      = data.data || (data.success ? 'OK' : 'Error');
     }
