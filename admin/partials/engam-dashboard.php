@@ -168,6 +168,49 @@ if ( false === $ad_slot_counts ) {
 }
 $ad_slot_total = array_sum( $ad_slot_counts );
 
+// ── Top-line figures ───────────────────────────────────────────────────────
+$impressions_report = $api_configured ? $api->get_impressions_report() : null;
+$total_impressions  = ( is_array( $impressions_report ) && isset( $impressions_report['total'] ) ) ? (int) $impressions_report['total'] : 0;
+
+// ── Active placement counts (also feed the cards grid below) ────────────────
+$med_half      = isset( $ad_slot_counts['med_half'] ) ? (int) $ad_slot_counts['med_half'] : 0;
+$m_leaderboard = $lb_active + (int) ( $ad_slot_counts['leaderboard'] ?? 0 );
+$m_medium_rect = (int) ( $ad_slot_counts['medium_rect'] ?? 0 ) + $med_half;
+$m_half_page   = (int) ( $ad_slot_counts['half_page'] ?? 0 ) + $med_half;
+
+$m_carousel = 0;
+foreach ( $carousels as $car ) {
+    $is_active = ! ( isset( $car['active'] ) && empty( $car['active'] ) );
+    $usage     = class_exists( 'Equinenetwork_Gam_V2_Carousel_Render' )
+        ? Equinenetwork_Gam_V2_Carousel_Render::usage( $car['id'] ?? '' )
+        : array();
+    if ( $is_active && ! empty( $usage ) ) $m_carousel++;
+}
+
+$m_masthead = count( array_filter( $all_takeovers, function( $t ) { return ! empty( $t['active'] ) && ( ( $t['type'] ?? 'wrap' ) === 'masthead' ); } ) );
+$m_wrap     = count( array_filter( $all_takeovers, function( $t ) { return ! empty( $t['active'] ) && ( ( $t['type'] ?? 'wrap' ) === 'wrap' ); } ) );
+
+$stk_settings = get_option( 'engam_v2_stacker_settings', null );
+if ( is_array( $stk_settings ) ) {
+    $m_stacker = ! empty( $stk_settings['active'] ) ? 1 : 0;
+} else {
+    $m_stacker = $stacker_active > 0 ? 1 : 0;
+}
+
+// Total active ad placements (excludes Sponsor IDs — those are advertisers, not placements).
+$total_placements = $m_leaderboard + $m_medium_rect + $m_half_page + $m_carousel + $m_masthead + $m_wrap + $m_stacker;
+
+$metric_cards = array(
+    array( 'label' => 'Leaderboards',     'count' => $m_leaderboard, 'link' => 'engam-v2-leaderboards' ),
+    array( 'label' => 'Medium Rectangle', 'count' => $m_medium_rect, 'link' => null ),
+    array( 'label' => 'Half Page',        'count' => $m_half_page,   'link' => null ),
+    array( 'label' => 'Carousel',         'count' => $m_carousel,    'link' => 'engam-v2-carousels' ),
+    array( 'label' => 'Masthead',         'count' => $m_masthead,    'link' => 'engam-v2-takeovers' ),
+    array( 'label' => 'Wrap Takeover',    'count' => $m_wrap,        'link' => 'engam-v2-takeovers' ),
+    array( 'label' => 'Stackers',         'count' => $m_stacker,     'link' => 'engam-v2-stackers' ),
+    array( 'label' => "Sponsor ID's",     'count' => $sponsor_count, 'link' => 'engam-v2-campaigns' ),
+);
+
 include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 ?>
 <div id="engam-v2-wrap">
@@ -210,8 +253,15 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 <!-- STATS -->
 <section class="eg-stats" style="margin-top:14px">
     <div class="eg-stat">
-        <small>Total Sponsor IDs</small>
-        <strong><?php echo $sponsor_count; ?></strong>
+        <small>Total Impressions (90d)</small>
+        <strong><?php echo esc_html( number_format_i18n( $total_impressions ) ); ?></strong>
+        <?php if ( $impressions_report ) : ?>
+            <span class="eg-ok">Live from GAM API</span>
+        <?php elseif ( $api_configured ) : ?>
+            <span class="eg-na"><a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-reports' ) ); ?>">See Reports</a></span>
+        <?php else : ?>
+            <span class="eg-na">—</span>
+        <?php endif; ?>
     </div>
     <div class="eg-stat">
         <small>GAM Line Items</small>
@@ -221,59 +271,12 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         <?php endif; ?>
     </div>
     <div class="eg-stat">
-        <small>GAM API</small>
-        <strong><?php echo $api_configured ? '✓' : '—'; ?></strong>
-        <?php if ( $api_configured ) : ?>
-            <span class="eg-ok">Connected</span>
-        <?php else : ?>
-            <span class="eg-na">Not configured</span>
-        <?php endif; ?>
+        <small>Total Ad Placements</small>
+        <strong><?php echo (int) $total_placements; ?></strong>
     </div>
 </section>
 
 <!-- ACTIVE AD PLACEMENT METRICS -->
-<?php
-$med_half = isset( $ad_slot_counts['med_half'] ) ? (int) $ad_slot_counts['med_half'] : 0;
-
-// Leaderboards: hardcoded header/footer (active) + Elementor widget placements.
-$m_leaderboard = $lb_active + (int) ( $ad_slot_counts['leaderboard'] ?? 0 );
-// Elementor widget placements by size.
-$m_medium_rect = (int) ( $ad_slot_counts['medium_rect'] ?? 0 ) + $med_half;
-$m_half_page   = (int) ( $ad_slot_counts['half_page'] ?? 0 ) + $med_half;
-
-// Carousels: active AND placed on a page.
-$m_carousel = 0;
-foreach ( $carousels as $car ) {
-    $is_active = ! ( isset( $car['active'] ) && empty( $car['active'] ) );
-    $usage     = class_exists( 'Equinenetwork_Gam_V2_Carousel_Render' )
-        ? Equinenetwork_Gam_V2_Carousel_Render::usage( $car['id'] ?? '' )
-        : array();
-    if ( $is_active && ! empty( $usage ) ) $m_carousel++;
-}
-
-// Takeovers split by type (active only).
-$m_masthead = count( array_filter( $all_takeovers, function( $t ) { return ! empty( $t['active'] ) && ( ( $t['type'] ?? 'wrap' ) === 'masthead' ); } ) );
-$m_wrap     = count( array_filter( $all_takeovers, function( $t ) { return ! empty( $t['active'] ) && ( ( $t['type'] ?? 'wrap' ) === 'wrap' ); } ) );
-
-// Stackers: single global injection config (migrated from legacy list).
-$stk_settings = get_option( 'engam_v2_stacker_settings', null );
-if ( is_array( $stk_settings ) ) {
-    $m_stacker = ! empty( $stk_settings['active'] ) ? 1 : 0;
-} else {
-    $m_stacker = $stacker_active > 0 ? 1 : 0;
-}
-
-$metric_cards = array(
-    array( 'label' => 'Leaderboards',     'count' => $m_leaderboard, 'link' => 'engam-v2-leaderboards' ),
-    array( 'label' => 'Medium Rectangle', 'count' => $m_medium_rect, 'link' => null ),
-    array( 'label' => 'Half Page',        'count' => $m_half_page,   'link' => null ),
-    array( 'label' => 'Carousel',         'count' => $m_carousel,    'link' => 'engam-v2-carousels' ),
-    array( 'label' => 'Masthead',         'count' => $m_masthead,    'link' => 'engam-v2-takeovers' ),
-    array( 'label' => 'Wrap Takeover',    'count' => $m_wrap,        'link' => 'engam-v2-takeovers' ),
-    array( 'label' => 'Stackers',         'count' => $m_stacker,     'link' => 'engam-v2-stackers' ),
-    array( 'label' => "Sponsor ID's",     'count' => $sponsor_count, 'link' => 'engam-v2-campaigns' ),
-);
-?>
 <div style="margin:0 0 8px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:900;color:#555">Active Ad Placements</div>
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
     <?php foreach ( $metric_cards as $mc ) :
