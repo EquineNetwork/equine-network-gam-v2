@@ -572,10 +572,12 @@ class Equinenetwork_Gam_V2_API {
 		if ( $log !== null ) $log[] = 'Report result: ' . $result_name;
 
 		// 4) Fetch the result rows (paginated).
-		$items        = array();
-		$total_rows   = 0;
-		$status_tally = array();
-		$page_token   = null;
+		$items             = array();
+		$total_rows        = 0;
+		$total_impressions = 0;
+		$impression_rows   = array();
+		$status_tally      = array();
+		$page_token        = null;
 		do {
 			$url = self::GAM_REST_BASE . '/' . $result_name . ':fetchRows?pageSize=1000';
 			if ( $page_token ) {
@@ -600,6 +602,17 @@ class Equinenetwork_Gam_V2_API {
 					$tally_key                  = $status !== '' ? $status : '(none)';
 					$status_tally[ $tally_key ] = ( isset( $status_tally[ $tally_key ] ) ? $status_tally[ $tally_key ] : 0 ) + 1;
 
+					// Capture impressions for the Reports page — every line item that served in
+					// the window, regardless of current status (completed items still delivered).
+					$imp                = $this->report_metric_int( $row );
+					$total_impressions += $imp;
+					$impression_rows[]  = array(
+						'gam_id'      => $li_id,
+						'name'        => $li_name !== '' ? $li_name : $li_id,
+						'status'      => $status,
+						'impressions' => $imp,
+					);
+
 					// Keep only line items that are currently live: delivering, ready, or paused.
 					// Drops completed, archived, inactive, pending approval, draft, canceled, disapproved.
 					if ( ! $this->is_active_status( $status ) ) {
@@ -618,6 +631,15 @@ class Equinenetwork_Gam_V2_API {
 			}
 			$page_token = isset( $fbody['nextPageToken'] ) ? $fbody['nextPageToken'] : null;
 		} while ( $page_token );
+
+		// Persist the impressions breakdown for the Reports page (sorted high → low, capped).
+		usort( $impression_rows, function( $a, $b ) { return $b['impressions'] <=> $a['impressions']; } );
+		update_option( 'engam_v2_impressions_report', array(
+			'rows'    => array_slice( $impression_rows, 0, 500 ),
+			'total'   => $total_impressions,
+			'range'   => self::REPORT_RANGE,
+			'updated' => time(),
+		), false );
 
 		if ( $log !== null ) {
 			$log[] = 'Line items on this ad unit (last 90 days): ' . $total_rows . ' total.';
@@ -648,6 +670,33 @@ class Equinenetwork_Gam_V2_API {
 		if ( isset( $val['intValue'] ) )    return (string) $val['intValue'];
 		if ( isset( $val['doubleValue'] ) ) return (string) $val['doubleValue'];
 		return '';
+	}
+
+	/**
+	 * Reads the first metric value (e.g. AD_SERVER_IMPRESSIONS) from a report row,
+	 * tolerating the v1 ("metricValueGroups") and legacy ("metricValues") shapes.
+	 */
+	private function report_metric_int( $row ) {
+		if ( isset( $row['metricValueGroups'][0]['primaryValues'][0] ) ) {
+			return (int) $this->report_value_string( $row['metricValueGroups'][0]['primaryValues'][0] );
+		}
+		if ( isset( $row['metricValues'][0] ) ) {
+			return (int) $this->report_value_string( $row['metricValues'][0] );
+		}
+		return 0;
+	}
+
+	/**
+	 * Returns the cached impressions breakdown for the Reports page, or null if the
+	 * ad-unit report has not run yet. Shape: [ 'rows' => [...], 'total' => int,
+	 * 'range' => string, 'updated' => timestamp ].
+	 */
+	public function get_impressions_report() {
+		$data = get_option( 'engam_v2_impressions_report', null );
+		if ( ! is_array( $data ) || ! isset( $data['rows'] ) || ! is_array( $data['rows'] ) ) {
+			return null;
+		}
+		return $data;
 	}
 
 	/**

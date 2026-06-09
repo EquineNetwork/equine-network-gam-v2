@@ -37,8 +37,8 @@
 #engam-v2-wrap .eg-btn.danger{background:transparent;border-color:#e0a0a0;color:#c0392b}
 #engam-v2-wrap .eg-btn.danger:hover{background:#FDE8E8;border-color:#D04040;color:#b02020}
 #engam-v2-wrap .eg-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:18px}
-#engam-v2-wrap .eg-stat{background:var(--en-surface);border:1px solid var(--en-border);border-radius:var(--en-radius);padding:18px}
-#engam-v2-wrap .eg-stat small{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:var(--en-muted)}
+#engam-v2-wrap .eg-stat{background:#fff;border:1px solid var(--en-border);border-radius:var(--en-radius);padding:18px;box-shadow:0 1px 2px rgba(17,17,17,.04)}
+#engam-v2-wrap .eg-stat small{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:#666}
 #engam-v2-wrap .eg-stat strong{display:block;font-family:var(--en-font-display);font-size:34px;letter-spacing:-.02em;margin:8px 0 4px;line-height:1;font-weight:700}
 #engam-v2-wrap .eg-ok{background:#E8F5C8;color:#4a6600;padding:3px 9px;font-size:11px;font-weight:600;display:inline-block;border-radius:var(--en-radius-pill)}
 #engam-v2-wrap .eg-na{color:var(--en-muted);font-size:12px;font-weight:500}

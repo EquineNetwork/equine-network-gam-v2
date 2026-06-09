@@ -263,30 +263,10 @@ if ( is_array( $stk_settings ) ) {
     $m_stacker = $stacker_active > 0 ? 1 : 0;
 }
 
-// Build leaderboard placement rows for the dashboard card (name → position label).
-$lb_card_rows = array();
-foreach ( $lb_detail_rows as $ldr ) {
-    $lb_card_rows[] = array( 'label' => $ldr['name'] . ' — ' . $ldr['pos'], 'edit' => '' );
-}
-
-// Merge medium_rect and med_half placements; half_page and med_half placements.
-$mr_placements = array_merge( $ad_slot_placements['medium_rect'] ?? array(), $ad_slot_placements['med_half'] ?? array() );
-$hp_placements = array_merge( $ad_slot_placements['half_page']   ?? array(), $ad_slot_placements['med_half'] ?? array() );
-
-// Elementor placement rows link to the page / template editor.
-$mr_rows = array();
-foreach ( $mr_placements as $p ) {
-    $mr_rows[] = array( 'label' => $p['title'], 'edit' => get_edit_post_link( $p['post_id'], 'raw' ) );
-}
-$hp_rows = array();
-foreach ( $hp_placements as $p ) {
-    $hp_rows[] = array( 'label' => $p['title'], 'edit' => get_edit_post_link( $p['post_id'], 'raw' ) );
-}
-
 $metric_cards = array(
-    array( 'label' => 'Leaderboards',     'count' => $m_leaderboard, 'link' => 'engam-v2-leaderboards', 'rows' => $lb_card_rows ),
-    array( 'label' => 'Medium Rectangle', 'count' => $m_medium_rect, 'link' => null, 'rows' => $mr_rows ),
-    array( 'label' => 'Half Page',        'count' => $m_half_page,   'link' => null, 'rows' => $hp_rows ),
+    array( 'label' => 'Leaderboards',     'count' => $m_leaderboard, 'link' => 'engam-v2-leaderboards' ),
+    array( 'label' => 'Medium Rectangle', 'count' => $m_medium_rect, 'link' => null ),
+    array( 'label' => 'Half Page',        'count' => $m_half_page,   'link' => null ),
     array( 'label' => 'Carousel',         'count' => $m_carousel,    'link' => 'engam-v2-carousels' ),
     array( 'label' => 'Masthead',         'count' => $m_masthead,    'link' => 'engam-v2-takeovers' ),
     array( 'label' => 'Wrap Takeover',    'count' => $m_wrap,        'link' => 'engam-v2-takeovers' ),
