@@ -70,6 +70,7 @@ if ( isset( $_POST['engam_v2_to_nonce'] ) && wp_verify_nonce( sanitize_text_fiel
                 'gam_line_item_id' => sanitize_text_field( wp_unslash( $_POST['engam_to_gam_line_item_id'] ?? '' ) ),
                 'schedule_start' => sanitize_text_field( wp_unslash( $_POST['engam_to_schedule_start'] ?? '' ) ),
                 'schedule_end'   => sanitize_text_field( wp_unslash( $_POST['engam_to_schedule_end'] ?? '' ) ),
+                'show_to_admins' => ! empty( $_POST['engam_to_mh_show_to_admins'] ),
                 'active'         => $prev_active,
             );
         } else {
@@ -560,6 +561,19 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         </script>
                         <p class="eg-hint">Show masthead on these pages. Leave empty to use Homepage toggle only.</p>
                     </div>
+                </div>
+            </div>
+
+            <!-- VISIBILITY -->
+            <div class="eg-form-section">
+                <h3>Visibility</h3>
+                <div style="display:flex;flex-direction:column;gap:14px">
+                    <label class="eg-toggle">
+                        <input type="checkbox" name="engam_to_mh_show_to_admins" value="1" id="engam-to-mh-show-admins" <?php checked( ( $editing && isset( $editing['type'] ) && 'masthead' === $editing['type'] ) ? ! empty( $editing['show_to_admins'] ) : false ); ?>>
+                        <span class="eg-toggle-track"><span class="eg-toggle-thumb"></span></span>
+                        Show masthead to Admins/Editors
+                    </label>
+                    <p class="eg-hint" style="margin-top:0">When off, admins/editors see a lime notice bar instead of the live masthead. Activate or deactivate this masthead from the list above.</p>
                 </div>
             </div>
 

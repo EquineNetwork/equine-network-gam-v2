@@ -97,7 +97,13 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                             <span class="eg-manual-badge">manual</span>
                         <?php endif; ?>
                     </td>
-                    <td style="font-family:monospace;font-size:12px;color:#555"><?php echo esc_html( $s['id'] ); ?></td>
+                    <td>
+                        <span class="engam-spid"><?php echo esc_html( $s['id'] ); ?></span>
+                        <button type="button" class="engam-copy-id" data-copy="<?php echo esc_attr( $s['id'] ); ?>" title="Copy Sponsor ID" aria-label="Copy Sponsor ID">
+                            <svg class="engam-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                            <span class="engam-copy-done" aria-hidden="true">Copied!</span>
+                        </button>
+                    </td>
                     <td>
                         <?php if ( $is_manual ) : ?>
                             <form method="post" style="margin:0">
@@ -181,4 +187,39 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
     min-width: 200px;
 }
 .eg-manual-input:focus { border-color: #111; outline: none; }
+.engam-spid { font-family: monospace; font-size: 12px; color: #555; }
+.engam-copy-id {
+    background: none; border: none; cursor: pointer; padding: 3px 6px; margin-left: 6px;
+    color: #999; vertical-align: middle; border-radius: 4px; line-height: 0; transition: background .12s, color .12s;
+}
+.engam-copy-id:hover { color: #111; background: #F0F0F0; }
+.engam-copy-id .engam-copy-done {
+    display: none; font-family: 'IBM Plex Sans', Arial, sans-serif; font-size: 10px; font-weight: 600;
+    color: #4a6600; text-transform: uppercase; letter-spacing: .04em; line-height: 1; vertical-align: middle;
+}
+.engam-copy-id.copied { background: #E8F5C8; }
+.engam-copy-id.copied .engam-copy-icon { display: none; }
+.engam-copy-id.copied .engam-copy-done { display: inline; }
 </style>
+<script>
+(function(){
+    document.querySelectorAll('.engam-copy-id').forEach(function(btn){
+        btn.addEventListener('click', function(){
+            var text = btn.getAttribute('data-copy') || '';
+            function done(){
+                btn.classList.add('copied');
+                setTimeout(function(){ btn.classList.remove('copied'); }, 1200);
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done, done);
+            } else {
+                var ta = document.createElement('textarea');
+                ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                document.body.appendChild(ta); ta.focus(); ta.select();
+                try { document.execCommand('copy'); } catch (e) {}
+                document.body.removeChild(ta); done();
+            }
+        });
+    });
+})();
+</script>
