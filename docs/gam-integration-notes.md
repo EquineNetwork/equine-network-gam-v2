@@ -2,8 +2,9 @@
 
 Reference for how the tricky GAM integrations actually work, **why** the obvious
 approaches failed, and the exact request shapes that finally worked. Written after the
-v3.3.37–v3.3.48 work. If you touch line items, ad‑unit scoping, the stacker AI
-categories, or the Half Page leaderboard, read this first.
+v3.3.37–v3.3.48 work and extended through v3.3.82. If you touch line items, ad‑unit
+scoping, the takeover line‑item picker, the stacker AI categories, or the Half Page
+leaderboard, read this first.
 
 All of this lives in `includes/class-equinenetwork-gam-v2-api.php` unless noted.
 
@@ -93,8 +94,19 @@ rows, then delete it. See `run_ad_unit_report()`.
    `stringValue` / `intValue` / `doubleValue`).
 5. `DELETE /{reportName}` — best‑effort cleanup so the GAM Reports UI stays tidy.
 
-If **anything** in this flow fails, `fetch_line_items()` falls back to the full
-unfiltered `lineItems.list` so the dashboard is never empty/erroring.
+If **anything** in this flow fails, `fetch_line_items()` returns the report's `WP_Error`
+rather than caching anything. ⚠️ **Do not "fall back" to the full `lineItems.list`** — an
+early version did, which dumped all ~5,500 network line items into the picker (and, since
+the list has no status, none could be filtered out). The list is *not* a usable per‑site
+source; see §9.
+
+### Flight dates: backfilled from the list
+The report rows carry **no start/end dates**. `fetch_line_items()` therefore also pulls
+`lineItems.list` once and builds a `gam_id → {startTime, endTime}` map, then backfills
+`start_time`/`end_time` onto the report rows. (The list omits targeting and status but
+**does** return `startTime`/`endTime`.) The takeover wrap uses these dates to auto‑expire
+— see §9.
+
 
 ### Resolving the site's ad unit IDs
 `get_site_ad_unit_resources()`:
@@ -216,6 +228,8 @@ band, then JS moves it into the page body of the targeted page(s).
 | Settings (GAM API card, flat‑icon redesign) | `admin/partials/engam-settings.php` |
 | Dashboard placement cards | `admin/partials/engam-dashboard.php` |
 | Diagnostics (Test Connection) | `Equinenetwork_Gam_V2_API::diagnose()` → admin AJAX `ajax_test_connection()` |
+| Takeover line‑item picker + GAM‑ID lookup | `admin/partials/engam-takeovers.php` (picker JS) · `Equinenetwork_Gam_V2_API::lookup_line_item()` · AJAX `ajax_lookup_line_item()` (`wp_ajax_engam_v2_lookup_line_item`) |
+| Takeover serve gate + flight‑date auto‑expiry | `public/class-equinenetwork-gam-v2-takeover.php` (`entry_is_live()`, `gam_line_item_flight()`) |
 | Tab name list (XLSX + Graph) | `Equinenetwork_Gam_V2_API::list_worksheet_names()` → `get_ms_link_worksheet_names()` / `get_ms_worksheet_names()` |
 | Tab name AJAX endpoint | `Equinenetwork_Gam_V2_Admin::ajax_ms_tabs()` (`wp_ajax_engam_v2_ms_tabs`) |
 | Sponsor dropdown label format ("Name - id") | `admin/class-equinenetwork-gam-v2-metabox.php::get_campaign_options()` and `public/class-equinenetwork-gam-v2-carousel-render.php::sponsor_options()` |
@@ -247,6 +261,10 @@ actually returning.
 | 3.3.53 | Worksheet/Tab Name gains `engam_v2_ms_tabs` AJAX endpoint + `list_worksheet_names()` to fetch real tab names from the file; first UI used `<datalist>` (superseded by v3.3.54) |
 | 3.3.54 | Tab picker: `<datalist>` → real `<select>` + hidden input (datalist only shows suggestions matching the current typed value — not a true dropdown); version bump to deliver the fix via the update checker |
 | 3.3.55 | **Leaderboard size-mapping fix**: `validSizes()` now normalizes a single `[w,h]` pair, so the Elementor widget's leaderboard slot builds a viewport size map and GAM can't serve a 320x50 creative on desktop (see §8) |
+| 3.3.79 | Takeover picker first attempt: merged the full `lineItems.list` into the report results so new/not‑yet‑delivered items would show. **Side effect: ~5,500 items** because the list can't be scoped (superseded) |
+| 3.3.80 | Scoped the merge to the site's ad units via list targeting + inherited GAM flight dates for wrap auto‑expiry. **The scoping silently matched 0** — the list has no targeting (see §9) |
+| 3.3.81 | Added the **full‑list probe** to `diagnose()` (targeting present? dates present? resolving to this site? sample fields) — this is what proved the list returns no targeting/status |
+| 3.3.82 | **Final fix**: dropped list‑based scoping; added **direct GAM‑ID lookup** (`lookup_line_item()`, single `GET`) so not‑yet‑delivered items are wired up by ID and persisted durably; `fetch_line_items()` simplified to report + date backfill + durable manual items (see §9) |
 
 ---
 
@@ -417,3 +435,77 @@ This is the central choke point all slots pass through, so it fixes the widget l
 **and** the stacker, and is backward-compatible with the already-correct `[[…]]` shape (e.g.
 `med_half`, takeover). When touching ad sizes, keep `validSizes()` tolerant of both shapes
 rather than forcing every emitter to agree.
+
+---
+
+## 9. Takeover line‑item picker, GAM‑ID lookup, and wrap auto‑expiry (v3.3.79–v3.3.82)
+
+The Masthead/Wrap takeover editor lets you link a takeover to the **GAM line item** that
+delivers it, so the flight schedule shows in the UI and the wrap can start/stop itself.
+The picker is in `admin/partials/engam-takeovers.php`; the data is the cached
+`engam_v2_line_items` list (§1).
+
+### The problem we hit
+A brand‑new wrap line item (status **Ready**, **0 impressions**) **could not be found in
+the picker**. Two compounding reasons:
+1. The picker list comes from the **delivery report** (§1), which only returns line items
+   that have actually *served* in the last 90 days. A zero‑impression item produces no
+   report row, so it's simply not there.
+2. There is **no way to scope the full `lineItems.list` to this site** to fill the gap —
+   the list response contains **no targeting and no status** (proven by the §1 probe;
+   fields are only `name, order, displayName, startTime, endTime, lineItemType, rate,
+   budget, goal`). So you can't tell from the list which items run on this site.
+
+> Dead ends already tried (don't repeat): merging the whole list (→ ~5,500 items);
+> scoping the list by `targeting.inventoryTargeting.targetedAdUnits` (→ matches 0, the
+> field isn't returned); a `fields` mask to force targeting (→ HTTP 400).
+
+### The fix — direct GAM‑ID lookup
+A single‑item `GET /networks/{net}/lineItems/{id}` **does** return the full resource
+(name, displayName, startTime, endTime, …). So the picker has a **"…or paste a GAM line
+item ID"** control next to the search box.
+
+- `Equinenetwork_Gam_V2_API::lookup_line_item( $gam_id )` — strips non‑digits, `GET`s the
+  single line item, maps it via `map_one_line_item()`.
+- It **persists** the item in the durable option **`engam_v2_li_manual`** (`OPTION_MANUAL_LI`),
+  keyed by `gam_id`, *and* drops it into the `engam_v2_line_items` cache for immediate use.
+- `fetch_line_items()` **merges `engam_v2_li_manual` into every rebuild** (deduped by
+  `gam_id`). This is the key durability step — otherwise the next hourly/cron cache rebuild
+  (report‑only) would drop the manually‑wired item and it would vanish from the picker again.
+- AJAX: `wp_ajax_engam_v2_lookup_line_item` → `Equinenetwork_Gam_V2_Admin::ajax_lookup_line_item()`
+  (nonce `engam_v2_ajax`, cap `edit_others_posts`). The picker JS posts the ID, then fills the
+  hidden ID field + label, updates the "View in GAM" link, and pushes the item into
+  `window.engamLineItems` so re‑opening the dropdown shows it.
+- Where to get the ID: the number after `line_item_id=` in the GAM line‑item URL.
+- `engam_v2_li_manual` is added to `uninstall.php` cleanup. `clear_cache()` does **not**
+  remove it (it's not a cache).
+
+The normal search still covers the ~50 delivering items; paste‑ID is the escape hatch for
+not‑yet‑delivered ones.
+
+### Wrap auto‑expiry from GAM flight dates
+Wraps don't store their own schedule (only mastheads have schedule fields). Pre‑v3.3.80,
+`entry_is_live()` only read the stored `schedule_start`/`schedule_end`, so a wrap stayed
+"Active" **forever** regardless of the GAM flight — the creative would stop in GAM but the
+plugin kept rendering the wrap chrome and suppressing other ads.
+
+`entry_is_live()` (and the admin badge `engam_to_status()`) now **fall back to the linked
+GAM line item's flight window** when no schedule is stored:
+- looked up via `gam_line_item_flight( $gam_id )`, which reads the cached line item by `gam_id`;
+- GAM timestamps are **timezone‑aware (RFC3339)**, so they are compared against **UTC**
+  (`time()`), *not* `current_time('timestamp')` (which is WP‑local and only correct for the
+  naive masthead schedule strings). Don't collapse these two "now" values.
+- This is why the flight‑date backfill in §1 matters — without dates on the cached item,
+  there's nothing to expire against.
+
+**Timing caveat:** expiry is driven by the cached line item, and the cache refreshes ~hourly
+(45‑min cron, §1), so a wrap deactivates within ~an hour of its GAM end, not to the second.
+
+### Not the plugin: the mobile "gray gap" above the wrap
+Reported as a gray band between the wrap's background ad and the site header on mobile.
+**It's the Elementor header template, not this plugin.** The empty header container
+`.elementor-element-f85613b` (header `19125`) has a mobile rule `--min-height: 70px`
+(`@media (max-width: 767px)`) with a dark background, reserving 70px with nothing in it.
+Fix it in Elementor (clear that container's mobile min‑height / make it desktop‑only). Do
+**not** add a plugin CSS override for it — the rule lives in the theme's header and a
+plugin hack would silently break if the header is rebuilt.
