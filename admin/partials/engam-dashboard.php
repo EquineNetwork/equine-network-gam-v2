@@ -182,7 +182,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         </div>
     </div>
     <div class="eg-mast-actions">
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-campaigns' ) ); ?>" class="eg-btn dark">+ Add Campaign</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-campaigns' ) ); ?>" class="eg-btn">+ Add Sponsor ID</a>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-takeovers' ) ); ?>" class="eg-btn ghost">Takeovers</a>
     </div>
 </section>
