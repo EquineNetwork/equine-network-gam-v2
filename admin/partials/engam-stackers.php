@@ -128,7 +128,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
             <p class="eg-hint" style="margin:0 0 12px">Read-only — the <code>ai_category</code> values defined in GAM that stacker creatives target against. Managed in GAM; shown here for reference (<?php echo count( $ai_categories ); ?> total).</p>
             <div style="display:flex;flex-wrap:wrap;gap:8px">
                 <?php foreach ( $ai_categories as $cat ) : ?>
-                <span style="display:inline-block;padding:7px 16px;background:#050505;color:#fff;border-radius:100px;font-size:12px;font-weight:700;letter-spacing:.02em;line-height:1.2"><?php echo esc_html( $cat ); ?></span>
+                <span style="display:inline-block;padding:7px 16px;background:#111;color:#fff;border-radius:100px;font-size:12px;font-weight:600;letter-spacing:.02em;line-height:1.2"><?php echo esc_html( $cat ); ?></span>
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
@@ -208,7 +208,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
             </div>
         </div>
 
-        <div class="eg-form-section" style="border-top:1px solid #deded8">
+        <div class="eg-form-section" style="border-top:1px solid #E8E8E8">
             <button type="submit" class="eg-btn" style="padding:14px 32px;font-size:14px">Save Settings</button>
         </div>
     </form>
