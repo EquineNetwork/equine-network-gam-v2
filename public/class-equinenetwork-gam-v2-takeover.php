@@ -101,6 +101,33 @@ class Equinenetwork_Gam_V2_Takeover {
     }
 
     /**
+     * The fixed bottom bar shown to admins/editors in place of a live takeover or masthead when
+     * "Show to admins" is off. Inherits the flight window from the linked GAM line item (the same
+     * source entry_is_live() enforces) when no schedule is stored, so it shows the real start/stop
+     * dates rather than a misleading "Now → No end date".
+     */
+    private static function admin_notice_bar( $to ) {
+        $bar_start = ! empty( $to['schedule_start'] ) ? $to['schedule_start'] : '';
+        $bar_end   = ! empty( $to['schedule_end'] )   ? $to['schedule_end']   : '';
+        if ( ( $bar_start === '' || $bar_end === '' ) && ! empty( $to['gam_line_item_id'] ) ) {
+            $li = self::gam_line_item_flight( $to['gam_line_item_id'] );
+            if ( $li ) {
+                if ( $bar_start === '' && ! empty( $li['start_time'] ) ) $bar_start = $li['start_time'];
+                if ( $bar_end   === '' && ! empty( $li['end_time'] ) )   $bar_end   = $li['end_time'];
+            }
+        }
+        $start_fmt = $bar_start !== '' ? date_i18n( 'M j, Y g:i a', strtotime( $bar_start ) ) : 'Now';
+        $end_fmt   = $bar_end   !== '' ? date_i18n( 'M j, Y g:i a', strtotime( $bar_end ) )   : 'No end date';
+        $label     = ( isset( $to['type'] ) && 'masthead' === $to['type'] ) ? 'MASTHEAD' : 'TAKEOVER';
+
+        return '<div style="position:fixed;bottom:0;left:0;right:0;z-index:999999;background:#C8FF00;color:#111;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;padding:10px 20px;text-align:center;border-top:3px solid #111">'
+            . esc_html( $label ) . ' ACTIVE (admins see this bar only): '
+            . esc_html( isset( $to['name'] ) ? $to['name'] : '' )
+            . ' &mdash; ' . esc_html( $start_fmt ) . ' &rarr; ' . esc_html( $end_fmt )
+            . '</div>';
+    }
+
+    /**
      * Find the first active + in-schedule entry of ANY type.
      */
     private function get_active() {
@@ -233,6 +260,13 @@ class Equinenetwork_Gam_V2_Takeover {
             // Masthead respects page targeting
             if ( ! $this->masthead_is_targeted( $to ) ) return;
 
+            // Show admins a notice bar instead of the live masthead when show_to_admins = false
+            // (parity with wrap takeovers).
+            if ( $is_admin_user && empty( $to['show_to_admins'] ) ) {
+                echo self::admin_notice_bar( $to ); // phpcs:ignore
+                return;
+            }
+
             $debug = isset( $_GET['engam_debug'] ) && $is_admin_user;
 
             echo $this->masthead_html( $to, $debug ); // phpcs:ignore
@@ -261,27 +295,9 @@ class Equinenetwork_Gam_V2_Takeover {
 
         $show_to_admins = ! empty( $to['show_to_admins'] );
 
-        // Show admin notice bar instead of full takeover when show_to_admins = false
+        // Show admin notice bar instead of the full takeover when show_to_admins = false.
         if ( $is_admin_user && ! $show_to_admins ) {
-            // Wraps store no schedule of their own — inherit the linked GAM line item's flight window
-            // (the same source entry_is_live() enforces) so the bar shows the real start/stop dates
-            // instead of a misleading "Now → No end date".
-            $bar_start = ! empty( $to['schedule_start'] ) ? $to['schedule_start'] : '';
-            $bar_end   = ! empty( $to['schedule_end'] )   ? $to['schedule_end']   : '';
-            if ( ( $bar_start === '' || $bar_end === '' ) && ! empty( $to['gam_line_item_id'] ) ) {
-                $li = self::gam_line_item_flight( $to['gam_line_item_id'] );
-                if ( $li ) {
-                    if ( $bar_start === '' && ! empty( $li['start_time'] ) ) $bar_start = $li['start_time'];
-                    if ( $bar_end   === '' && ! empty( $li['end_time'] ) )   $bar_end   = $li['end_time'];
-                }
-            }
-            $start_fmt = $bar_start !== '' ? date_i18n( 'M j, Y g:i a', strtotime( $bar_start ) ) : 'Now';
-            $end_fmt   = $bar_end   !== '' ? date_i18n( 'M j, Y g:i a', strtotime( $bar_end ) )   : 'No end date';
-            echo '<div style="position:fixed;bottom:0;left:0;right:0;z-index:999999;background:#d0ff00;color:#111;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;padding:10px 20px;text-align:center;border-top:3px solid #050505">';
-            echo 'TAKEOVER ACTIVE (admins see this bar only): ';
-            echo esc_html( $to['name'] );
-            echo ' &mdash; ' . esc_html( $start_fmt ) . ' &rarr; ' . esc_html( $end_fmt );
-            echo '</div>';
+            echo self::admin_notice_bar( $to ); // phpcs:ignore
             return;
         }
 
