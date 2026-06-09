@@ -17,7 +17,6 @@ if ( isset( $_POST['engam_v2_settings_nonce'] ) && wp_verify_nonce( sanitize_tex
     $form = sanitize_text_field( wp_unslash( $_POST['engam_form'] ?? '' ) );
     if ( current_user_can( 'manage_options' ) && 'core' === $form ) {
         update_option( 'equinenetwork_gam_v2_id', sanitize_text_field( wp_unslash( $_POST['equinenetwork_gam_v2_id'] ?? '' ) ) );
-        update_option( 'engam_v2_delete_data_on_uninstall', isset( $_POST['engam_v2_delete_data_on_uninstall'] ) ? 1 : 0 );
         delete_transient( 'engam_v2_line_items' );
         $gam_id    = get_option( 'equinenetwork_gam_v2_id', '' );
         $id_active = ! empty( $gam_id );
@@ -136,14 +135,6 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         value="<?php echo esc_attr( $gam_id ); ?>"
                         placeholder="/22345131513/sitename">
                     <p class="eg-hint">Your full Google Ad Manager network path.</p>
-                </div>
-                <div class="eg-settings-field" style="margin-top:16px;padding-top:16px;border-top:1px solid #eee">
-                    <label class="eg-toggle">
-                        <input type="checkbox" name="engam_v2_delete_data_on_uninstall" value="1" <?php checked( (int) get_option( 'engam_v2_delete_data_on_uninstall', 0 ), 1 ); ?>>
-                        <span class="eg-toggle-track"><span class="eg-toggle-thumb"></span></span>
-                        Delete all data on uninstall
-                    </label>
-                    <p class="eg-hint">When on, deleting the plugin removes all its settings, caches, and saved ads (carousels, takeovers, leaderboards, stacker rules, credentials). When off, your data is preserved if the plugin is removed. Does not affect updates or deactivation.</p>
                 </div>
                 <button type="submit" class="eg-btn" style="width:100%;justify-content:center;display:flex">Save Settings</button>
             </form>
