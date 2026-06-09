@@ -255,8 +255,19 @@ class Equinenetwork_Gam_V2_Takeover {
 
         // Show admin notice bar instead of full takeover when show_to_admins = false
         if ( $is_admin_user && ! $show_to_admins ) {
-            $start_fmt = ! empty( $to['schedule_start'] ) ? date_i18n( 'M j, Y g:i a', strtotime( $to['schedule_start'] ) ) : 'Now';
-            $end_fmt   = ! empty( $to['schedule_end'] )   ? date_i18n( 'M j, Y g:i a', strtotime( $to['schedule_end'] ) )   : 'No end date';
+            // Match the schedule column in the admin list: prefer the linked GAM line item's
+            // flight dates (wraps don't store an explicit schedule), fall back to any stored one.
+            $li = ! empty( $to['gam_line_item_id'] ) ? self::gam_line_item_flight( $to['gam_line_item_id'] ) : null;
+            if ( $li && ! empty( $li['start_time'] ) ) {
+                $start_fmt = date_i18n( 'M j, Y', strtotime( $li['start_time'] ) );
+            } else {
+                $start_fmt = ! empty( $to['schedule_start'] ) ? date_i18n( 'M j, Y', strtotime( $to['schedule_start'] ) ) : 'Now';
+            }
+            if ( $li && ! empty( $li['end_time'] ) ) {
+                $end_fmt = date_i18n( 'M j, Y', strtotime( $li['end_time'] ) );
+            } else {
+                $end_fmt = ! empty( $to['schedule_end'] ) ? date_i18n( 'M j, Y', strtotime( $to['schedule_end'] ) ) : 'No end date';
+            }
             echo '<div style="position:fixed;bottom:0;left:0;right:0;z-index:999999;background:#d0ff00;color:#111;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;padding:10px 20px;text-align:center;border-top:3px solid #050505">';
             echo 'TAKEOVER ACTIVE (admins see this bar only): ';
             echo esc_html( $to['name'] );
