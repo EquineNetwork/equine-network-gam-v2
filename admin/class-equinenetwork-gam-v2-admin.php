@@ -23,8 +23,13 @@ class Equinenetwork_Gam_V2_Admin {
 		add_action( 'wp_ajax_engam_v2_search_terms',      array( $this, 'ajax_search_terms' ) );
 		add_action( 'wp_ajax_engam_v2_report_slot_mismatch', array( $this, 'ajax_report_slot_mismatch' ) );
 		add_action( 'wp_ajax_nopriv_engam_v2_report_slot_mismatch', array( $this, 'ajax_report_slot_mismatch' ) );
-		add_action( 'wp_ajax_engam_v2_dismiss_slot_warning', array( $this, 'ajax_dismiss_slot_warning' ) );
-		add_action( 'admin_notices',                      array( $this, 'admin_notice_slot_mismatch' ) );
+		add_action( 'wp_ajax_engam_v2_dismiss_slot_warning',   array( $this, 'ajax_dismiss_slot_warning' ) );
+		add_action( 'wp_ajax_engam_v2_onboarding_save_gam',    array( $this, 'ajax_onboarding_save_gam' ) );
+		add_action( 'wp_ajax_engam_v2_onboarding_save_ms',     array( $this, 'ajax_onboarding_save_ms' ) );
+		add_action( 'wp_ajax_engam_v2_onboarding_migrate',     array( $this, 'ajax_onboarding_migrate' ) );
+		add_action( 'wp_ajax_engam_v2_onboarding_dismiss',     array( $this, 'ajax_onboarding_dismiss' ) );
+		add_action( 'admin_notices',                            array( $this, 'admin_notice_slot_mismatch' ) );
+		add_action( 'admin_footer',                             array( $this, 'render_onboarding_modal' ) );
 	}
 
 	/**
@@ -579,6 +584,63 @@ class Equinenetwork_Gam_V2_Admin {
 			update_option( 'engam_v2_slot_warnings', $warnings );
 		}
 
+		wp_send_json_success();
+	}
+
+	/**
+	 * Render the onboarding wizard modal in admin_footer on all admin pages.
+	 * Only for manage_options users; auto-shows when setup is incomplete.
+	 */
+	public function render_onboarding_modal() {
+		if ( ! current_user_can( 'manage_options' ) ) return;
+		include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-onboarding.php';
+	}
+
+	public function ajax_onboarding_save_gam() {
+		check_ajax_referer( 'engam_v2_admin', 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) wp_die( -1 );
+
+		$gam_id = sanitize_text_field( wp_unslash( $_POST['engam_gam_id'] ?? '' ) );
+		update_option( 'equinenetwork_gam_v2_id', $gam_id );
+		delete_transient( 'engam_v2_line_items' );
+		wp_send_json_success( 'GAM network ID saved.' );
+	}
+
+	public function ajax_onboarding_save_ms() {
+		check_ajax_referer( 'engam_v2_admin', 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) wp_die( -1 );
+
+		$url   = esc_url_raw( wp_unslash( $_POST['ms_url']   ?? '' ) );
+		$sheet = sanitize_text_field( wp_unslash( $_POST['ms_sheet'] ?? '' ) );
+		update_option( 'engam_v2_ms_file_url',   $url );
+		update_option( 'engam_v2_ms_sheet_name', $sheet );
+		delete_transient( 'engam_v2_sponsor_options' );
+		delete_transient( 'engam_v2_ms_worksheets' );
+		wp_send_json_success( 'SharePoint connection saved.' );
+	}
+
+	public function ajax_onboarding_migrate() {
+		check_ajax_referer( 'engam_v2_admin', 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) wp_die( -1 );
+
+		require_once EQUINENETWORK_GAM_V2_PATH . 'includes/engam-v2-migrate.php';
+		$result = engam_v2_migrate_acf_sponsors( true );
+		wp_send_json_success(
+			sprintf(
+				'Migration complete: %d item(s) migrated (%d post/page, %d category/tag). %d already had a sponsor ID and were left unchanged.',
+				(int) $result['migrated'],
+				(int) $result['posts'],
+				(int) $result['terms'],
+				(int) $result['skipped_existing']
+			)
+		);
+	}
+
+	public function ajax_onboarding_dismiss() {
+		check_ajax_referer( 'engam_v2_admin', 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) wp_die( -1 );
+
+		update_option( 'engam_v2_onboarding_dismissed', 1 );
 		wp_send_json_success();
 	}
 
