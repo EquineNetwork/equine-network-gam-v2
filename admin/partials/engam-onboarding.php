@@ -38,9 +38,9 @@ $ajax_nonce = wp_create_nonce( 'engam_v2_ajax' );
   <div id="engam-ob-modal" style="background:#fff;max-width:600px;width:100%;border-radius:4px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.35);display:flex;flex-direction:column;max-height:calc(100vh - 32px)">
 
     <!-- Header -->
-    <div style="background:#050505;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+    <div style="background:#111111;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
       <div style="display:flex;align-items:center;gap:12px">
-        <div style="width:34px;height:34px;background:#d0ff00;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;color:#050505;letter-spacing:-.02em;flex-shrink:0">EN</div>
+        <div style="width:34px;height:34px;background:#C8FF00;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;color:#111111;letter-spacing:-.02em;flex-shrink:0">EN</div>
         <div>
           <div style="font-size:10px;color:#777;text-transform:uppercase;letter-spacing:.1em;margin-bottom:1px">Setup Wizard</div>
           <div style="font-size:16px;font-weight:700;color:#fff;line-height:1.2">Get started with EN Ads</div>
@@ -59,7 +59,7 @@ $ajax_nonce = wp_create_nonce( 'engam_v2_ajax' );
 
       <!-- Step 1: GAM Settings -->
       <div class="engam-ob-step" data-step="1">
-        <h3 style="margin:0 0 6px;font-size:18px;font-weight:700;color:#050505">GAM Settings</h3>
+        <h3 style="margin:0 0 6px;font-size:18px;font-weight:700;color:#111111">GAM Settings</h3>
         <p style="margin:0 0 20px;font-size:13px;color:#555;line-height:1.55">Enter your Google Ad Manager network path. You can find it in GAM under <strong>Admin → Network settings</strong>.</p>
         <div style="margin-bottom:6px">
           <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#444;margin-bottom:6px" for="engam-ob-gam-id">GAM Network ID</label>
@@ -74,11 +74,11 @@ $ajax_nonce = wp_create_nonce( 'engam_v2_ajax' );
 
       <!-- Step 2: GAM API Credentials -->
       <div class="engam-ob-step" data-step="2" style="display:none">
-        <h3 style="margin:0 0 6px;font-size:18px;font-weight:700;color:#050505">GAM API Credentials</h3>
+        <h3 style="margin:0 0 6px;font-size:18px;font-weight:700;color:#111111">GAM API Credentials</h3>
         <?php if ( $has_creds ) : ?>
-        <div style="background:#f7f7f4;border:1px solid #deded8;border-left:4px solid #050505;padding:12px 14px;border-radius:4px;display:flex;align-items:center;gap:10px;margin-bottom:16px">
-          <span style="width:28px;height:28px;background:#050505;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:2px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#d0ff00" stroke-width="3" stroke-linecap="square"/></svg></span>
-          <span style="font-size:13px;font-weight:600;color:#050505">API credentials are already configured — you can skip this step or upload a replacement key.</span>
+        <div style="background:#f7f7f4;border:1px solid #deded8;border-left:4px solid #111111;padding:12px 14px;border-radius:4px;display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <span style="width:28px;height:28px;background:#111111;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:2px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#C8FF00" stroke-width="3" stroke-linecap="square"/></svg></span>
+          <span style="font-size:13px;font-weight:600;color:#111111">API credentials are already configured — you can skip this step or upload a replacement key.</span>
         </div>
         <?php else : ?>
         <p style="margin:0 0 16px;font-size:13px;color:#555;line-height:1.55">Upload your Google service account JSON key file to enable live campaign sync from GAM.</p>
@@ -86,12 +86,12 @@ $ajax_nonce = wp_create_nonce( 'engam_v2_ajax' );
         <div id="engam-ob-upload-area"
           style="border:2px dashed #ccc;background:#f8f8f5;padding:14px 16px;cursor:pointer;border-radius:4px;transition:border-color .15s;display:flex;align-items:center;gap:12px;margin-bottom:14px"
           onclick="document.getElementById('engam-ob-creds-file').click()"
-          ondragover="event.preventDefault();this.style.borderColor='#050505'"
+          ondragover="event.preventDefault();this.style.borderColor='#111111'"
           ondragleave="this.style.borderColor='#ccc'"
           ondrop="engamObHandleDrop(event)">
           <input type="file" id="engam-ob-creds-file" accept=".json,application/json" style="display:none">
-          <span style="flex-shrink:0;width:30px;height:30px;background:#050505;display:inline-flex;align-items:center;justify-content:center;border-radius:2px">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 15V4M8 8l4-4 4 4M5 20h14" stroke="#d0ff00" stroke-width="2.4" stroke-linecap="square" stroke-linejoin="miter"/></svg>
+          <span style="flex-shrink:0;width:30px;height:30px;background:#111111;display:inline-flex;align-items:center;justify-content:center;border-radius:2px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 15V4M8 8l4-4 4 4M5 20h14" stroke="#C8FF00" stroke-width="2.4" stroke-linecap="square" stroke-linejoin="miter"/></svg>
           </span>
           <div id="engam-ob-upload-label">
             <strong style="font-size:12px;display:block">Click to upload or drag &amp; drop</strong>
@@ -99,13 +99,13 @@ $ajax_nonce = wp_create_nonce( 'engam_v2_ajax' );
           </div>
         </div>
         <button type="button" id="engam-ob-test-api"
-          style="background:#fff;color:#050505;border:2px solid #111;padding:9px 18px;font-size:12px;font-weight:700;cursor:pointer;border-radius:3px">Test Connection</button>
+          style="background:#fff;color:#111111;border:2px solid #111;padding:9px 18px;font-size:12px;font-weight:700;cursor:pointer;border-radius:3px">Test Connection</button>
         <div id="engam-ob-step2-msg" style="display:none;margin-top:12px;padding:10px 14px;border-radius:4px;font-size:13px;font-weight:600"></div>
       </div>
 
       <!-- Step 3: SharePoint Spreadsheet -->
       <div class="engam-ob-step" data-step="3" style="display:none">
-        <h3 style="margin:0 0 6px;font-size:18px;font-weight:700;color:#050505">Sponsor ID Spreadsheet</h3>
+        <h3 style="margin:0 0 6px;font-size:18px;font-weight:700;color:#111111">Sponsor ID Spreadsheet</h3>
         <p style="margin:0 0 20px;font-size:13px;color:#555;line-height:1.55">Connect your SharePoint spreadsheet to power the &ldquo;Lock to Sponsor&rdquo; dropdowns and Carousels across the site.</p>
 
         <div style="margin-bottom:16px">
@@ -135,24 +135,24 @@ $ajax_nonce = wp_create_nonce( 'engam_v2_ajax' );
         </div>
 
         <button type="button" id="engam-ob-test-ms"
-          style="background:#fff;color:#050505;border:2px solid #111;padding:9px 18px;font-size:12px;font-weight:700;cursor:pointer;border-radius:3px">Test Connection</button>
+          style="background:#fff;color:#111111;border:2px solid #111;padding:9px 18px;font-size:12px;font-weight:700;cursor:pointer;border-radius:3px">Test Connection</button>
         <div id="engam-ob-step3-msg" style="display:none;margin-top:12px;padding:10px 14px;border-radius:4px;font-size:13px;font-weight:600"></div>
       </div>
 
       <!-- Step 4: ACF Migration -->
       <div class="engam-ob-step" data-step="4" style="display:none">
-        <h3 style="margin:0 0 6px;font-size:18px;font-weight:700;color:#050505">Migrate Sponsor IDs from ACF</h3>
+        <h3 style="margin:0 0 6px;font-size:18px;font-weight:700;color:#111111">Migrate Sponsor IDs from ACF</h3>
         <?php if ( $acf_count > 0 ) : ?>
         <p style="margin:0 0 16px;font-size:13px;color:#555;line-height:1.55">
           Found <strong><?php echo (int) $acf_count; ?> item(s)</strong> with legacy ACF sponsor IDs (<code style="background:#f5f5f0;padding:1px 4px;border-radius:2px">sponlineitemid</code> / <code style="background:#f5f5f0;padding:1px 4px;border-radius:2px">sponsorship_id</code>).
           Copy them into this plugin now so they keep working after you remove those ACF fields. Existing plugin assignments are never overwritten.
         </p>
         <button type="button" id="engam-ob-run-migrate"
-          style="background:#050505;color:#d0ff00;border:none;padding:10px 22px;font-size:13px;font-weight:700;cursor:pointer;border-radius:3px">Run Migration Now</button>
+          style="background:#111111;color:#C8FF00;border:none;padding:10px 22px;font-size:13px;font-weight:700;cursor:pointer;border-radius:3px">Run Migration Now</button>
         <?php else : ?>
-        <div style="background:#f7f7f4;border:1px solid #deded8;border-left:4px solid #050505;padding:14px 16px;border-radius:4px;display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <span style="width:28px;height:28px;background:#050505;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:2px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#d0ff00" stroke-width="3" stroke-linecap="square"/></svg></span>
-          <span style="font-size:13px;font-weight:600;color:#050505">No ACF sponsor IDs found — nothing to migrate. You're all set!</span>
+        <div style="background:#f7f7f4;border:1px solid #deded8;border-left:4px solid #111111;padding:14px 16px;border-radius:4px;display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span style="width:28px;height:28px;background:#111111;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:2px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#C8FF00" stroke-width="3" stroke-linecap="square"/></svg></span>
+          <span style="font-size:13px;font-weight:600;color:#111111">No ACF sponsor IDs found — nothing to migrate. You're all set!</span>
         </div>
         <?php endif; ?>
         <div id="engam-ob-step4-msg" style="display:none;margin-top:12px;padding:10px 14px;border-radius:4px;font-size:13px;font-weight:600"></div>
@@ -166,7 +166,7 @@ $ajax_nonce = wp_create_nonce( 'engam_v2_ajax' );
       <span id="engam-ob-prev-spacer"></span>
       <div style="display:flex;gap:10px;align-items:center">
         <button type="button" id="engam-ob-skip" style="background:none;border:none;color:#999;padding:8px 4px;font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:2px">Skip this step</button>
-        <button type="button" id="engam-ob-next" style="background:#050505;color:#d0ff00;border:none;padding:10px 22px;font-size:13px;font-weight:700;cursor:pointer;border-radius:3px">Continue &#8594;</button>
+        <button type="button" id="engam-ob-next" style="background:#111111;color:#C8FF00;border:none;padding:10px 22px;font-size:13px;font-weight:700;cursor:pointer;border-radius:3px">Continue &#8594;</button>
       </div>
     </div>
 
@@ -213,7 +213,7 @@ $ajax_nonce = wp_create_nonce( 'engam_v2_ajax' );
         if (!el) return;
         el.style.display    = 'block';
         el.style.background = success ? '#f7f7f4' : '#fde8e8';
-        el.style.borderLeft = success ? '4px solid #050505' : '4px solid #cc0000';
+        el.style.borderLeft = success ? '4px solid #111111' : '4px solid #cc0000';
         el.style.color      = success ? '#111' : '#9b1c1c';
         el.textContent      = text;
     }
@@ -270,11 +270,11 @@ $ajax_nonce = wp_create_nonce( 'engam_v2_ajax' );
             var lbl = document.getElementById('engam-ob-lbl-' + n);
             if (!dot || !lbl) return;
             if (n < currentStep) {
-                dot.style.background = '#050505'; dot.style.color = '#d0ff00'; dot.textContent = '✓';
+                dot.style.background = '#111111'; dot.style.color = '#C8FF00'; dot.textContent = '✓';
                 lbl.style.color = '#555';
             } else if (n === currentStep) {
-                dot.style.background = '#d0ff00'; dot.style.color = '#050505'; dot.textContent = n;
-                lbl.style.color = '#050505';
+                dot.style.background = '#C8FF00'; dot.style.color = '#111111'; dot.textContent = n;
+                lbl.style.color = '#111111';
             } else {
                 dot.style.background = '#e0e0da'; dot.style.color = '#aaa'; dot.textContent = n;
                 lbl.style.color = '#aaa';
@@ -519,7 +519,7 @@ $ajax_nonce = wp_create_nonce( 'engam_v2_ajax' );
                 }
                 pendingCreds = json;
                 var lbl = document.getElementById('engam-ob-upload-label');
-                if (lbl) lbl.innerHTML = '<strong style="font-size:12px;display:block;color:#050505">' + file.name + '</strong>'
+                if (lbl) lbl.innerHTML = '<strong style="font-size:12px;display:block;color:#111111">' + file.name + '</strong>'
                     + '<span style="font-size:11px;color:#0a6e0a">Ready — click Continue to save</span>';
                 clearMsg('engam-ob-step2-msg');
             } catch(ex) {
