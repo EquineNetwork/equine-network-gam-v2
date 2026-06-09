@@ -224,6 +224,7 @@ class Equinenetwork_Gam_V2_Leaderboard {
 		}
 		insertBeforeMiddleChild(cur,s);
 	}
+	function drop(node){ if(node&&node.parentNode){ node.parentNode.removeChild(node); } }
 	function move(){
 		var allSlots=document.querySelectorAll('[data-engam-leaderboard]');
 		allSlots.forEach(function(s){
@@ -231,15 +232,26 @@ class Equinenetwork_Gam_V2_Leaderboard {
 			if(pos==='midpoint'){placeMidpoint(s);return;}
 			var tmplMatch=pos.match(/^(header|footer)_tmpl_(\d+)$/);
 			var posType=tmplMatch?tmplMatch[1]:pos;
-			// For template-specific positions, find the Elementor template wrapper by its numeric ID class.
+			// A template-specific leaderboard is scoped to its Elementor template: it renders ONLY on
+			// pages where that template is the active header/footer (its wrapper, .elementor-<id>, is
+			// present). If the template isn't on this page, drop the slot — never fall back to the
+			// generic header/footer. Templates with no leaderboard assigned simply get none.
 			var tmplEl=tmplMatch?document.querySelector('.elementor-'+tmplMatch[2]):null;
+			if(tmplMatch&&!tmplEl){drop(s);return;}
 			if(posType==='header'){
 				var headerEl=tmplEl?(tmplEl.closest('header')||tmplEl.parentNode):document.querySelector('header.site-header,header#masthead,header#site-header,.site-header,header');
-				if(headerEl&&headerEl.parentNode){headerEl.parentNode.insertBefore(s,headerEl.nextSibling);}
+				if(!headerEl||!headerEl.parentNode){drop(s);return;}
+				// Never stack two leaderboards on the same header.
+				if(headerEl.getAttribute('data-engam-lb-done')){drop(s);return;}
+				headerEl.parentNode.insertBefore(s,headerEl.nextSibling);
+				headerEl.setAttribute('data-engam-lb-done','1');
 			}else if(posType==='footer'){
 				var footerEl=tmplEl?(tmplEl.closest('footer')||tmplEl):document.querySelector('footer.site-footer,footer#colophon,footer#site-footer,.site-footer,footer');
-				if(footerEl){footerEl.insertBefore(s,footerEl.firstChild);}
-			}
+				if(!footerEl){drop(s);return;}
+				if(footerEl.getAttribute('data-engam-lb-done')){drop(s);return;}
+				footerEl.insertBefore(s,footerEl.firstChild);
+				footerEl.setAttribute('data-engam-lb-done','1');
+			}else{drop(s);return;}
 		});
 	}
 	if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',move);}else{move();}
