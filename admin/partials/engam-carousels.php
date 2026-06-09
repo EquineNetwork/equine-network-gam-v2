@@ -273,7 +273,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 <style>
 #engam-v2-wrap .engam-tabs{display:flex;gap:6px;border-bottom:2px solid #deded8;margin-bottom:22px}
 #engam-v2-wrap .engam-tab-btn{appearance:none;border:none;background:transparent;padding:12px 22px;font-weight:700;font-size:14px;cursor:pointer;color:#777;border-bottom:3px solid transparent;margin-bottom:-2px;letter-spacing:.01em}
-#engam-v2-wrap .engam-tab-btn.active{color:#050505;border-bottom-color:#129b6f}
+#engam-v2-wrap .engam-tab-btn.active{color:#111;border-bottom-color:#C8FF00}
 #engam-v2-wrap .engam-tab-panel{display:none}
 #engam-v2-wrap .engam-tab-panel.active{display:block}
 #engam-v2-wrap .engam-slide-row{border:1px solid #deded8;border-radius:8px;padding:16px;margin-bottom:14px;background:#fafaf8}
@@ -377,7 +377,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     <td>
                         <?php if ( $car_gam_id && $engam_list_net ) : ?>
                         <a href="https://admanager.google.com/<?php echo esc_attr( $engam_list_net ); ?>#delivery/line_item/detail/line_item_id=<?php echo rawurlencode( $car_gam_id ); ?>"
-                           target="_blank" rel="noopener" class="eg-btn sm" style="background:#d0ff00;color:#111;border-color:#d0ff00">View in GAM ↗</a>
+                           target="_blank" rel="noopener" class="eg-btn sm">View in GAM ↗</a>
                         <?php else : ?>
                         <span style="color:#bbb;font-size:12px">—</span>
                         <?php endif; ?>
