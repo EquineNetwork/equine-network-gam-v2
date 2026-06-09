@@ -18,6 +18,7 @@ class Equinenetwork_Gam_V2_API {
 	const CACHE_GRAPH_TOKEN  = 'engam_v2_graph_token';       // Microsoft Graph OAuth2 token
 	const CACHE_MS_SHEETS    = 'engam_v2_ms_worksheets';     // cached list of worksheet names
 	const OPTION_MANUAL_LI   = 'engam_v2_li_manual';         // line items wired up by direct GAM-ID lookup
+	const OPTION_LI_FLIGHTS  = 'engam_v2_li_flights';        // durable last-known flight dates, keyed by GAM ID
 
 	private $credentials;
 	private $network_code;
@@ -354,6 +355,7 @@ class Equinenetwork_Gam_V2_API {
 
 		if ( ! empty( $items ) ) {
 			set_transient( self::CACHE_KEY, $items, self::CACHE_DURATION );
+			self::persist_flight_dates( $items );
 		}
 
 		return $items;
@@ -400,6 +402,7 @@ class Equinenetwork_Gam_V2_API {
 		}
 		$manual[ $item['gam_id'] ] = $item;
 		update_option( self::OPTION_MANUAL_LI, $manual, false );
+		self::persist_flight_dates( array( $item ) );
 
 		$cached = get_transient( self::CACHE_KEY );
 		if ( ! is_array( $cached ) ) {
@@ -420,6 +423,42 @@ class Equinenetwork_Gam_V2_API {
 		set_transient( self::CACHE_KEY, $cached, self::CACHE_DURATION );
 
 		return $item;
+	}
+
+	/**
+	 * Persists each line item's flight dates into a durable option (merged, keyed by GAM ID) so the
+	 * front-end and admin can resolve a takeover's schedule even after the 1-hour line-items cache
+	 * expires. Merged (not replaced) so a line item that drops out of the per-site list keeps its
+	 * last-known dates.
+	 */
+	private static function persist_flight_dates( $items ) {
+		$flights = get_option( self::OPTION_LI_FLIGHTS, array() );
+		if ( ! is_array( $flights ) ) {
+			$flights = array();
+		}
+		foreach ( (array) $items as $li ) {
+			$gid = isset( $li['gam_id'] ) ? (string) $li['gam_id'] : '';
+			if ( $gid === '' ) {
+				continue;
+			}
+			$flights[ $gid ] = array(
+				'gam_id'     => $gid,
+				'name'       => isset( $li['name'] ) ? $li['name'] : '',
+				'start_time' => isset( $li['start_time'] ) ? $li['start_time'] : '',
+				'end_time'   => isset( $li['end_time'] ) ? $li['end_time'] : '',
+			);
+		}
+		update_option( self::OPTION_LI_FLIGHTS, $flights, false );
+	}
+
+	/**
+	 * Durable last-known flight dates for a GAM line item (survives cache expiry). Returns an array
+	 * with gam_id/name/start_time/end_time, or null.
+	 */
+	public static function get_flight_dates_durable( $gam_id ) {
+		$flights = get_option( self::OPTION_LI_FLIGHTS, array() );
+		$gam_id  = (string) $gam_id;
+		return ( is_array( $flights ) && isset( $flights[ $gam_id ] ) ) ? $flights[ $gam_id ] : null;
 	}
 
 	/**

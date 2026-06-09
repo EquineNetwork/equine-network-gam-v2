@@ -79,15 +79,23 @@ class Equinenetwork_Gam_V2_Takeover {
      * Used so wraps inherit their schedule from GAM without storing a copy that can go stale.
      */
     public static function gam_line_item_flight( $gam_id ) {
-        $cached = get_transient( 'engam_v2_line_items' );
-        if ( ! is_array( $cached ) ) return null;
         $gam_id = (string) $gam_id;
-        foreach ( $cached as $li ) {
-            $by_gam = isset( $li['gam_id'] ) ? (string) $li['gam_id'] : '';
-            $by_id  = isset( $li['id'] ) ? (string) $li['id'] : '';
-            if ( $by_gam === $gam_id || strcasecmp( $by_id, $gam_id ) === 0 ) {
-                return $li;
+        $cached = get_transient( 'engam_v2_line_items' );
+        if ( is_array( $cached ) ) {
+            foreach ( $cached as $li ) {
+                $by_gam = isset( $li['gam_id'] ) ? (string) $li['gam_id'] : '';
+                $by_id  = isset( $li['id'] ) ? (string) $li['id'] : '';
+                if ( $by_gam === $gam_id || strcasecmp( $by_id, $gam_id ) === 0 ) {
+                    return $li;
+                }
             }
+        }
+        // Durable fallback (engam_v2_li_flights): last-known flight dates persisted by the API on
+        // every cache rebuild / GAM-ID lookup. Survives the 1-hour line-items cache expiring, so the
+        // schedule display and start/stop enforcement keep working without a manual Refresh Cache.
+        $flights = get_option( 'engam_v2_li_flights', array() );
+        if ( is_array( $flights ) && isset( $flights[ $gam_id ] ) ) {
+            return $flights[ $gam_id ];
         }
         return null;
     }
@@ -255,8 +263,20 @@ class Equinenetwork_Gam_V2_Takeover {
 
         // Show admin notice bar instead of full takeover when show_to_admins = false
         if ( $is_admin_user && ! $show_to_admins ) {
-            $start_fmt = ! empty( $to['schedule_start'] ) ? date_i18n( 'M j, Y g:i a', strtotime( $to['schedule_start'] ) ) : 'Now';
-            $end_fmt   = ! empty( $to['schedule_end'] )   ? date_i18n( 'M j, Y g:i a', strtotime( $to['schedule_end'] ) )   : 'No end date';
+            // Wraps store no schedule of their own — inherit the linked GAM line item's flight window
+            // (the same source entry_is_live() enforces) so the bar shows the real start/stop dates
+            // instead of a misleading "Now → No end date".
+            $bar_start = ! empty( $to['schedule_start'] ) ? $to['schedule_start'] : '';
+            $bar_end   = ! empty( $to['schedule_end'] )   ? $to['schedule_end']   : '';
+            if ( ( $bar_start === '' || $bar_end === '' ) && ! empty( $to['gam_line_item_id'] ) ) {
+                $li = self::gam_line_item_flight( $to['gam_line_item_id'] );
+                if ( $li ) {
+                    if ( $bar_start === '' && ! empty( $li['start_time'] ) ) $bar_start = $li['start_time'];
+                    if ( $bar_end   === '' && ! empty( $li['end_time'] ) )   $bar_end   = $li['end_time'];
+                }
+            }
+            $start_fmt = $bar_start !== '' ? date_i18n( 'M j, Y g:i a', strtotime( $bar_start ) ) : 'Now';
+            $end_fmt   = $bar_end   !== '' ? date_i18n( 'M j, Y g:i a', strtotime( $bar_end ) )   : 'No end date';
             echo '<div style="position:fixed;bottom:0;left:0;right:0;z-index:999999;background:#d0ff00;color:#111;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;padding:10px 20px;text-align:center;border-top:3px solid #050505">';
             echo 'TAKEOVER ACTIVE (admins see this bar only): ';
             echo esc_html( $to['name'] );

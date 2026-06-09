@@ -162,6 +162,16 @@ if ( is_array( $cached_li ) ) {
         }
     }
 }
+// Resilience: fold in the durable last-known flight dates so the Schedule column keeps showing
+// dates even after the 1-hour line-items cache expires (no manual Refresh Cache needed).
+$durable_flights = get_option( 'engam_v2_li_flights', array() );
+if ( is_array( $durable_flights ) ) {
+    foreach ( $durable_flights as $gid => $f ) {
+        if ( ! isset( $gam_line_item_map[ (string) $gid ] ) ) {
+            $gam_line_item_map[ (string) $gid ] = $f;
+        }
+    }
+}
 
 // Helper: compute status label
 function engam_to_status( $t, $gam_line_item_map = array() ) {
