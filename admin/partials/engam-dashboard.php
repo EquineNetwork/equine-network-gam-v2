@@ -193,8 +193,8 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 <!-- GAM NETWORK ID FULL-WIDTH CARD -->
 <div class="eg-card" style="margin-top:18px;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap">
     <div>
-        <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:900;color:#555;margin-bottom:6px">GAM Network ID</div>
-        <div style="font-size:<?php echo $id_active ? '20px' : '28px'; ?>;font-weight:900;letter-spacing:<?php echo $id_active ? '-.5px' : '-1px'; ?>;line-height:1;color:#050505">
+        <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:#888;margin-bottom:6px">GAM Network ID</div>
+        <div style="font-family:'Space Grotesk','IBM Plex Sans',sans-serif;font-size:<?php echo $id_active ? '22px' : '28px'; ?>;font-weight:700;letter-spacing:-.01em;line-height:1;color:#111">
             <?php echo $id_active ? esc_html( $gam_id ) : '—'; ?>
         </div>
     </div>
@@ -298,7 +298,7 @@ $metric_cards = array(
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
     <?php foreach ( $metric_cards as $mc ) :
         $count    = (int) $mc['count'];
-        $tag_attr = $count > 0 ? '' : ' style="background:#eee;color:#999"';
+        $tag_attr = $count > 0 ? '' : ' style="background:#F0F0F0;color:#999"';
         $has_link = ! empty( $mc['link'] );
         ob_start();
         ?>
@@ -340,15 +340,15 @@ $metric_cards = array(
 
 <!-- GUIDE — full bleed -->
 <div class="eg-card black eg-full-bleed" style="margin-top:18px">
-    <div class="eg-head" style="border-color:#2c2c2c">
+    <div class="eg-head" style="border-color:#2a2a2a">
         <span class="eg-tag">Guide</span>
     </div>
     <div class="eg-body" style="font-size:13px;line-height:1.6;color:#d8d8d2;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0 48px">
-        <p style="margin:0 0 12px"><strong style="color:#d0ff00">1. GAM API</strong> syncs active line items automatically — no manual list to maintain.</p>
-        <p style="margin:0 0 12px"><strong style="color:#d0ff00">2. On any post or page</strong>, use the <strong style="color:#fff">EN Campaign</strong> sidebar panel to assign a sponsor ID that overrides all ads on that page.</p>
-        <p style="margin:0 0 12px"><strong style="color:#d0ff00">3. In Elementor</strong>, drop the <strong style="color:#fff">EN Ad Slot</strong> widget and pick a preset — the sponsor dropdown pulls from GAM live.</p>
-        <p style="margin:0 0 12px"><strong style="color:#d0ff00">4. Takeovers</strong> wrap the entire page — set a date range and upload brand images to run a full-site takeover.</p>
-        <p style="margin:0 0 12px"><strong style="color:#d0ff00">5. GAM handles</strong> creative scheduling, fallbacks, and targeting automatically.</p>
+        <p style="margin:0 0 12px"><strong style="color:#C8FF00">1. GAM API</strong> syncs active line items automatically — no manual list to maintain.</p>
+        <p style="margin:0 0 12px"><strong style="color:#C8FF00">2. On any post or page</strong>, use the <strong style="color:#fff">EN Campaign</strong> sidebar panel to assign a sponsor ID that overrides all ads on that page.</p>
+        <p style="margin:0 0 12px"><strong style="color:#C8FF00">3. In Elementor</strong>, drop the <strong style="color:#fff">EN Ad Slot</strong> widget and pick a preset — the sponsor dropdown pulls from GAM live.</p>
+        <p style="margin:0 0 12px"><strong style="color:#C8FF00">4. Takeovers</strong> wrap the entire page — set a date range and upload brand images to run a full-site takeover.</p>
+        <p style="margin:0 0 12px"><strong style="color:#C8FF00">5. GAM handles</strong> creative scheduling, fallbacks, and targeting automatically.</p>
     </div>
     <div class="eg-accentline"></div>
 </div>
