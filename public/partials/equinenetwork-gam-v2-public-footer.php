@@ -113,6 +113,10 @@ googletag.cmd.push(function() {
 
 	for (var i = 0; i < adSlots.length; i++) {
 		var slot       = adSlots[i];
+		// Skip ad slots inside a scheduled carousel that resolved to "off" (outside its
+		// schedule window). Its inline gate marks the wrapper before GPT runs, so we never
+		// request ads for a carousel that isn't being shown.
+		if (slot.closest && slot.closest('.engam-car-sched[data-engam-sched-off]')) continue;
 		var sizeDesktop = (typeof slot.dataset.sizedesktop === 'undefined') ? null : JSON.parse(slot.dataset.sizedesktop);
 		var sizeMobile  = (typeof slot.dataset.sizemobile  === 'undefined') ? null : JSON.parse(slot.dataset.sizemobile);
 		var adSize      = (typeof slot.dataset.sizes       === 'undefined') ? null : JSON.parse(slot.dataset.sizes);

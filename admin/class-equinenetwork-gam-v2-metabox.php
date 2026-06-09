@@ -149,15 +149,15 @@ class Equinenetwork_Gam_V2_Metabox {
 		.engam-meta-desc { font-size: 12px; color: #666; margin: 0 0 10px; line-height: 1.5; }
 		.engam-meta-label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
 		.engam-meta-select { width: 100%; padding: 7px 8px; font-size: 13px; border: 1px solid #bbb; background: #fff; }
-		.engam-meta-select:focus { border-color: #050505; outline: none; }
+		.engam-meta-select:focus { border-color: #111111; outline: none; }
 		.engam-meta-input { width: 100%; padding: 7px 8px; font-size: 13px; border: 1px solid #bbb; background: #fff; box-sizing: border-box; }
-		.engam-meta-input:focus { border-color: #050505; outline: none; }
+		.engam-meta-input:focus { border-color: #111111; outline: none; }
 		.engam-meta-clear { display: block; font-size: 11px; color: #cc0000; text-decoration: none; margin-top: 5px; }
 		.engam-meta-current { font-size: 12px; color: #555; margin: 8px 0 0; }
-		.engam-meta-current code { background: #d0ff00; padding: 1px 5px; font-size: 11px; color: #111; }
+		.engam-meta-current code { background: #C8FF00; padding: 1px 5px; font-size: 11px; color: #111; }
 		.engam-meta-current a { color: #cc0000; text-decoration: none; margin-left: 6px; }
 		.engam-meta-empty { font-size: 12px; color: #888; margin: 6px 0 0; }
-		.engam-meta-empty a { color: #050505; font-weight: 700; }
+		.engam-meta-empty a { color: #111111; font-weight: 700; }
 		#engam_v2_campaign .inside { padding: 10px 12px; }
 		.column-engam_sponsor { width: 16%; }
 		</style>

@@ -162,6 +162,16 @@ if ( is_array( $cached_li ) ) {
         }
     }
 }
+// Resilience: fold in the durable last-known flight dates so the Schedule column keeps showing
+// dates even after the 1-hour line-items cache expires (no manual Refresh Cache needed).
+$durable_flights = get_option( 'engam_v2_li_flights', array() );
+if ( is_array( $durable_flights ) ) {
+    foreach ( $durable_flights as $gid => $f ) {
+        if ( ! isset( $gam_line_item_map[ (string) $gid ] ) ) {
+            $gam_line_item_map[ (string) $gid ] = $f;
+        }
+    }
+}
 
 // Helper: compute status label
 function engam_to_status( $t, $gam_line_item_map = array() ) {
@@ -201,21 +211,21 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 ?>
 <style>
 .engam-type-badge-masthead {
-    display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;
-    background:#dbeafe;color:#1d4ed8;text-transform:uppercase;letter-spacing:.04em;
+    display:inline-block;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600;
+    background:#111111;color:#C8FF00;text-transform:uppercase;letter-spacing:.04em;
 }
 .engam-type-badge-wrap {
-    display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;
-    background:#1e1e2d;color:#e2e8f0;text-transform:uppercase;letter-spacing:.04em;
+    display:inline-block;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600;
+    background:#F0F0F0;color:#555;text-transform:uppercase;letter-spacing:.04em;
 }
 .engam-type-card {
-    border:2px solid #deded8;border-radius:10px;padding:20px 18px;cursor:pointer;
+    border:1px solid #E8E8E8;border-radius:8px;padding:20px 18px;cursor:pointer;
     background:#fff;text-align:left;transition:border-color .15s,box-shadow .15s;width:100%;
 }
 .engam-type-card:hover,.engam-type-card.selected {
-    border-color:#1d4ed8;box-shadow:0 0 0 3px rgba(29,78,216,.12);
+    border-color:#111;box-shadow:0 0 0 3px rgba(200,255,0,.30);
 }
-.engam-type-card h4 { margin:0 0 6px;font-size:15px; }
+.engam-type-card h4 { margin:0 0 6px;font-size:15px;font-family:'Space Grotesk','IBM Plex Sans',sans-serif; }
 .engam-type-card p  { margin:0;font-size:13px;color:#666;line-height:1.4; }
 /* Desktop: badges inside the name cell are redundant — dedicated Type/Status columns show them */
 #engam-v2-wrap .eg-table-card .egm-top-row .engam-type-badge-masthead,
@@ -311,7 +321,6 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                             <?php endif; ?>
                             <span class="eg-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $badge_label ); ?></span>
                         </div>
-                        <div class="eg-campaign-id" style="margin-top:2px"><?php echo esc_html( $to['id'] ); ?></div>
                     </td>
                     <td data-label="Type">
                         <?php if ( 'masthead' === $to_type ) : ?>
@@ -325,7 +334,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                     <td data-label="GAM">
                         <?php if ( $gam_li_key && $engam_list_net ) : ?>
                         <a href="https://admanager.google.com/<?php echo esc_attr( $engam_list_net ); ?>#delivery/line_item/detail/line_item_id=<?php echo rawurlencode( $gam_li_key ); ?>"
-                           target="_blank" rel="noopener" class="eg-btn sm" style="background:#d0ff00;color:#111;border-color:#d0ff00">View in GAM ↗</a>
+                           target="_blank" rel="noopener" class="eg-btn sm">View in GAM ↗</a>
                         <?php else : ?>
                         <span style="color:#bbb;font-size:12px">—</span>
                         <?php endif; ?>

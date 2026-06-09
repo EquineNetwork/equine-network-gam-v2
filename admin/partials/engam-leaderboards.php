@@ -229,7 +229,6 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                 <tr>
                     <td>
                         <div style="font-weight:700;font-size:14px"><?php echo esc_html( $lb['name'] ?: '(untitled)' ); ?></div>
-                        <div style="font-family:Consolas,monospace;font-size:12px;color:#555;margin-top:2px"><?php echo esc_html( $lb['id'] ); ?></div>
                     </td>
                     <td><?php echo esc_html( $pos_label ); ?></td>
                     <td style="font-size:12px;color:#555">
@@ -238,7 +237,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                         <?php elseif ( $used_on['type'] === 'template' ) : ?>
                             <div>
                                 <?php if ( ! empty( $used_on['edit'] ) ) : ?>
-                                    <a href="<?php echo esc_url( $used_on['edit'] ); ?>" style="font-weight:700;text-decoration:none;color:#050505"><?php echo esc_html( $used_on['title'] ); ?></a>
+                                    <a href="<?php echo esc_url( $used_on['edit'] ); ?>" style="font-weight:700;text-decoration:none;color:#111"><?php echo esc_html( $used_on['title'] ); ?></a>
                                 <?php else : ?>
                                     <strong><?php echo esc_html( $used_on['title'] ); ?></strong>
                                 <?php endif; ?>
@@ -246,7 +245,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
                             </div>
                         <?php elseif ( $used_on['type'] === 'page' ) : ?>
                             <div>
-                                <a href="<?php echo esc_url( $used_on['edit'] ); ?>" style="font-weight:700;text-decoration:none;color:#050505"><?php echo esc_html( $used_on['title'] ); ?></a>
+                                <a href="<?php echo esc_url( $used_on['edit'] ); ?>" style="font-weight:700;text-decoration:none;color:#111"><?php echo esc_html( $used_on['title'] ); ?></a>
                                 <?php if ( ! empty( $used_on['view'] ) ) : ?>
                                     <a href="<?php echo esc_url( $used_on['view'] ); ?>" target="_blank" rel="noopener" title="View" style="text-decoration:none;margin-left:4px">↗</a>
                                 <?php endif; ?>
@@ -473,7 +472,7 @@ if ( $edit_id ) :
 })();
 </script>
 
-        <div class="eg-form-section" style="border-top:1px solid #deded8;display:flex;gap:10px;align-items:center">
+        <div class="eg-form-section" style="border-top:1px solid #E8E8E8;display:flex;gap:10px;align-items:center">
             <button type="submit" class="eg-btn" style="padding:14px 32px;font-size:14px"><?php echo $is_new ? 'Create Leaderboard' : 'Save Leaderboard'; ?></button>
             <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-leaderboards' ) ); ?>" class="eg-btn dark" style="padding:14px 32px;font-size:14px">Cancel</a>
         </div>

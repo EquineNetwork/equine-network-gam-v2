@@ -182,7 +182,7 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
         </div>
     </div>
     <div class="eg-mast-actions">
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-campaigns' ) ); ?>" class="eg-btn dark">+ Add Campaign</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-campaigns' ) ); ?>" class="eg-btn">+ Add Sponsor ID</a>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=engam-v2-takeovers' ) ); ?>" class="eg-btn ghost">Takeovers</a>
     </div>
 </section>
@@ -193,8 +193,8 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 <!-- GAM NETWORK ID FULL-WIDTH CARD -->
 <div class="eg-card" style="margin-top:18px;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap">
     <div>
-        <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:900;color:#555;margin-bottom:6px">GAM Network ID</div>
-        <div style="font-size:<?php echo $id_active ? '20px' : '28px'; ?>;font-weight:900;letter-spacing:<?php echo $id_active ? '-.5px' : '-1px'; ?>;line-height:1;color:#050505">
+        <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:#888;margin-bottom:6px">GAM Network ID</div>
+        <div style="font-family:'Space Grotesk','IBM Plex Sans',sans-serif;font-size:<?php echo $id_active ? '22px' : '28px'; ?>;font-weight:700;letter-spacing:-.01em;line-height:1;color:#111">
             <?php echo $id_active ? esc_html( $gam_id ) : '—'; ?>
         </div>
     </div>
@@ -263,30 +263,10 @@ if ( is_array( $stk_settings ) ) {
     $m_stacker = $stacker_active > 0 ? 1 : 0;
 }
 
-// Build leaderboard placement rows for the dashboard card (name → position label).
-$lb_card_rows = array();
-foreach ( $lb_detail_rows as $ldr ) {
-    $lb_card_rows[] = array( 'label' => $ldr['name'] . ' — ' . $ldr['pos'], 'edit' => '' );
-}
-
-// Merge medium_rect and med_half placements; half_page and med_half placements.
-$mr_placements = array_merge( $ad_slot_placements['medium_rect'] ?? array(), $ad_slot_placements['med_half'] ?? array() );
-$hp_placements = array_merge( $ad_slot_placements['half_page']   ?? array(), $ad_slot_placements['med_half'] ?? array() );
-
-// Elementor placement rows link to the page / template editor.
-$mr_rows = array();
-foreach ( $mr_placements as $p ) {
-    $mr_rows[] = array( 'label' => $p['title'], 'edit' => get_edit_post_link( $p['post_id'], 'raw' ) );
-}
-$hp_rows = array();
-foreach ( $hp_placements as $p ) {
-    $hp_rows[] = array( 'label' => $p['title'], 'edit' => get_edit_post_link( $p['post_id'], 'raw' ) );
-}
-
 $metric_cards = array(
-    array( 'label' => 'Leaderboards',     'count' => $m_leaderboard, 'link' => 'engam-v2-leaderboards', 'rows' => $lb_card_rows ),
-    array( 'label' => 'Medium Rectangle', 'count' => $m_medium_rect, 'link' => null, 'rows' => $mr_rows ),
-    array( 'label' => 'Half Page',        'count' => $m_half_page,   'link' => null, 'rows' => $hp_rows ),
+    array( 'label' => 'Leaderboards',     'count' => $m_leaderboard, 'link' => 'engam-v2-leaderboards' ),
+    array( 'label' => 'Medium Rectangle', 'count' => $m_medium_rect, 'link' => null ),
+    array( 'label' => 'Half Page',        'count' => $m_half_page,   'link' => null ),
     array( 'label' => 'Carousel',         'count' => $m_carousel,    'link' => 'engam-v2-carousels' ),
     array( 'label' => 'Masthead',         'count' => $m_masthead,    'link' => 'engam-v2-takeovers' ),
     array( 'label' => 'Wrap Takeover',    'count' => $m_wrap,        'link' => 'engam-v2-takeovers' ),
@@ -298,7 +278,7 @@ $metric_cards = array(
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
     <?php foreach ( $metric_cards as $mc ) :
         $count    = (int) $mc['count'];
-        $tag_attr = $count > 0 ? '' : ' style="background:#eee;color:#999"';
+        $tag_attr = $count > 0 ? '' : ' style="background:#F0F0F0;color:#999"';
         $has_link = ! empty( $mc['link'] );
         ob_start();
         ?>
@@ -337,20 +317,5 @@ $metric_cards = array(
 </div>
 
 </div><!-- .eg-content -->
-
-<!-- GUIDE — full bleed -->
-<div class="eg-card black eg-full-bleed" style="margin-top:18px">
-    <div class="eg-head" style="border-color:#2c2c2c">
-        <span class="eg-tag">Guide</span>
-    </div>
-    <div class="eg-body" style="font-size:13px;line-height:1.6;color:#d8d8d2;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0 48px">
-        <p style="margin:0 0 12px"><strong style="color:#d0ff00">1. GAM API</strong> syncs active line items automatically — no manual list to maintain.</p>
-        <p style="margin:0 0 12px"><strong style="color:#d0ff00">2. On any post or page</strong>, use the <strong style="color:#fff">EN Campaign</strong> sidebar panel to assign a sponsor ID that overrides all ads on that page.</p>
-        <p style="margin:0 0 12px"><strong style="color:#d0ff00">3. In Elementor</strong>, drop the <strong style="color:#fff">EN Ad Slot</strong> widget and pick a preset — the sponsor dropdown pulls from GAM live.</p>
-        <p style="margin:0 0 12px"><strong style="color:#d0ff00">4. Takeovers</strong> wrap the entire page — set a date range and upload brand images to run a full-site takeover.</p>
-        <p style="margin:0 0 12px"><strong style="color:#d0ff00">5. GAM handles</strong> creative scheduling, fallbacks, and targeting automatically.</p>
-    </div>
-    <div class="eg-accentline"></div>
-</div>
 
 </div><!-- #engam-v2-wrap -->

@@ -131,6 +131,16 @@ class Equinenetwork_Gam_V2_Admin {
 			array( $this, 'page_dashboard' )
 		);
 
+		// Reports
+		add_submenu_page(
+			'equinenetwork-gam-v2',
+			'EN Ads — Reports',
+			'Reports',
+			'edit_others_posts',
+			'engam-v2-reports',
+			array( $this, 'page_reports' )
+		);
+
 		// Leaderboards
 		add_submenu_page(
 			'equinenetwork-gam-v2',
@@ -190,6 +200,16 @@ class Equinenetwork_Gam_V2_Admin {
 			'engam-v2-settings',
 			array( $this, 'page_settings' )
 		);
+
+		// Support
+		add_submenu_page(
+			'equinenetwork-gam-v2',
+			'EN Ads — Support',
+			'Support',
+			'edit_others_posts',
+			'engam-v2-support',
+			array( $this, 'page_support' )
+		);
 	}
 
 	// ---- Page callbacks ----
@@ -220,6 +240,14 @@ class Equinenetwork_Gam_V2_Admin {
 
 	public function page_settings() {
 		include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-settings.php';
+	}
+
+	public function page_support() {
+		include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-support.php';
+	}
+
+	public function page_reports() {
+		include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-reports.php';
 	}
 
 	// ---- AJAX handlers ----

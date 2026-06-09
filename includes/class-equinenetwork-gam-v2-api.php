@@ -18,6 +18,7 @@ class Equinenetwork_Gam_V2_API {
 	const CACHE_GRAPH_TOKEN  = 'engam_v2_graph_token';       // Microsoft Graph OAuth2 token
 	const CACHE_MS_SHEETS    = 'engam_v2_ms_worksheets';     // cached list of worksheet names
 	const OPTION_MANUAL_LI   = 'engam_v2_li_manual';         // line items wired up by direct GAM-ID lookup
+	const OPTION_LI_FLIGHTS  = 'engam_v2_li_flights';        // durable last-known flight dates, keyed by GAM ID
 
 	private $credentials;
 	private $network_code;
@@ -354,6 +355,7 @@ class Equinenetwork_Gam_V2_API {
 
 		if ( ! empty( $items ) ) {
 			set_transient( self::CACHE_KEY, $items, self::CACHE_DURATION );
+			self::persist_flight_dates( $items );
 		}
 
 		return $items;
@@ -400,6 +402,7 @@ class Equinenetwork_Gam_V2_API {
 		}
 		$manual[ $item['gam_id'] ] = $item;
 		update_option( self::OPTION_MANUAL_LI, $manual, false );
+		self::persist_flight_dates( array( $item ) );
 
 		$cached = get_transient( self::CACHE_KEY );
 		if ( ! is_array( $cached ) ) {
@@ -420,6 +423,42 @@ class Equinenetwork_Gam_V2_API {
 		set_transient( self::CACHE_KEY, $cached, self::CACHE_DURATION );
 
 		return $item;
+	}
+
+	/**
+	 * Persists each line item's flight dates into a durable option (merged, keyed by GAM ID) so the
+	 * front-end and admin can resolve a takeover's schedule even after the 1-hour line-items cache
+	 * expires. Merged (not replaced) so a line item that drops out of the per-site list keeps its
+	 * last-known dates.
+	 */
+	private static function persist_flight_dates( $items ) {
+		$flights = get_option( self::OPTION_LI_FLIGHTS, array() );
+		if ( ! is_array( $flights ) ) {
+			$flights = array();
+		}
+		foreach ( (array) $items as $li ) {
+			$gid = isset( $li['gam_id'] ) ? (string) $li['gam_id'] : '';
+			if ( $gid === '' ) {
+				continue;
+			}
+			$flights[ $gid ] = array(
+				'gam_id'     => $gid,
+				'name'       => isset( $li['name'] ) ? $li['name'] : '',
+				'start_time' => isset( $li['start_time'] ) ? $li['start_time'] : '',
+				'end_time'   => isset( $li['end_time'] ) ? $li['end_time'] : '',
+			);
+		}
+		update_option( self::OPTION_LI_FLIGHTS, $flights, false );
+	}
+
+	/**
+	 * Durable last-known flight dates for a GAM line item (survives cache expiry). Returns an array
+	 * with gam_id/name/start_time/end_time, or null.
+	 */
+	public static function get_flight_dates_durable( $gam_id ) {
+		$flights = get_option( self::OPTION_LI_FLIGHTS, array() );
+		$gam_id  = (string) $gam_id;
+		return ( is_array( $flights ) && isset( $flights[ $gam_id ] ) ) ? $flights[ $gam_id ] : null;
 	}
 
 	/**
@@ -572,10 +611,12 @@ class Equinenetwork_Gam_V2_API {
 		if ( $log !== null ) $log[] = 'Report result: ' . $result_name;
 
 		// 4) Fetch the result rows (paginated).
-		$items        = array();
-		$total_rows   = 0;
-		$status_tally = array();
-		$page_token   = null;
+		$items             = array();
+		$total_rows        = 0;
+		$total_impressions = 0;
+		$impression_rows   = array();
+		$status_tally      = array();
+		$page_token        = null;
 		do {
 			$url = self::GAM_REST_BASE . '/' . $result_name . ':fetchRows?pageSize=1000';
 			if ( $page_token ) {
@@ -600,6 +641,17 @@ class Equinenetwork_Gam_V2_API {
 					$tally_key                  = $status !== '' ? $status : '(none)';
 					$status_tally[ $tally_key ] = ( isset( $status_tally[ $tally_key ] ) ? $status_tally[ $tally_key ] : 0 ) + 1;
 
+					// Capture impressions for the Reports page — every line item that served in
+					// the window, regardless of current status (completed items still delivered).
+					$imp                = $this->report_metric_int( $row );
+					$total_impressions += $imp;
+					$impression_rows[]  = array(
+						'gam_id'      => $li_id,
+						'name'        => $li_name !== '' ? $li_name : $li_id,
+						'status'      => $status,
+						'impressions' => $imp,
+					);
+
 					// Keep only line items that are currently live: delivering, ready, or paused.
 					// Drops completed, archived, inactive, pending approval, draft, canceled, disapproved.
 					if ( ! $this->is_active_status( $status ) ) {
@@ -618,6 +670,15 @@ class Equinenetwork_Gam_V2_API {
 			}
 			$page_token = isset( $fbody['nextPageToken'] ) ? $fbody['nextPageToken'] : null;
 		} while ( $page_token );
+
+		// Persist the impressions breakdown for the Reports page (sorted high → low, capped).
+		usort( $impression_rows, function( $a, $b ) { return $b['impressions'] <=> $a['impressions']; } );
+		update_option( 'engam_v2_impressions_report', array(
+			'rows'    => array_slice( $impression_rows, 0, 500 ),
+			'total'   => $total_impressions,
+			'range'   => self::REPORT_RANGE,
+			'updated' => time(),
+		), false );
 
 		if ( $log !== null ) {
 			$log[] = 'Line items on this ad unit (last 90 days): ' . $total_rows . ' total.';
@@ -648,6 +709,33 @@ class Equinenetwork_Gam_V2_API {
 		if ( isset( $val['intValue'] ) )    return (string) $val['intValue'];
 		if ( isset( $val['doubleValue'] ) ) return (string) $val['doubleValue'];
 		return '';
+	}
+
+	/**
+	 * Reads the first metric value (e.g. AD_SERVER_IMPRESSIONS) from a report row,
+	 * tolerating the v1 ("metricValueGroups") and legacy ("metricValues") shapes.
+	 */
+	private function report_metric_int( $row ) {
+		if ( isset( $row['metricValueGroups'][0]['primaryValues'][0] ) ) {
+			return (int) $this->report_value_string( $row['metricValueGroups'][0]['primaryValues'][0] );
+		}
+		if ( isset( $row['metricValues'][0] ) ) {
+			return (int) $this->report_value_string( $row['metricValues'][0] );
+		}
+		return 0;
+	}
+
+	/**
+	 * Returns the cached impressions breakdown for the Reports page, or null if the
+	 * ad-unit report has not run yet. Shape: [ 'rows' => [...], 'total' => int,
+	 * 'range' => string, 'updated' => timestamp ].
+	 */
+	public function get_impressions_report() {
+		$data = get_option( 'engam_v2_impressions_report', null );
+		if ( ! is_array( $data ) || ! isset( $data['rows'] ) || ! is_array( $data['rows'] ) ) {
+			return null;
+		}
+		return $data;
 	}
 
 	/**

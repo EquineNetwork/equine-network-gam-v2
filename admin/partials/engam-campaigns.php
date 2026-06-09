@@ -133,26 +133,26 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
 .eg-manual-badge {
     display: inline-block;
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: .06em;
-    background: #d0ff00;
+    background: #C8FF00;
     color: #111;
     padding: 1px 6px;
-    border-radius: 3px;
+    border-radius: 4px;
     margin-left: 6px;
     vertical-align: middle;
 }
 .eg-delete-btn {
     background: none;
     border: none;
-    color: #cc0000;
+    color: #c0392b;
     font-size: 18px;
     line-height: 1;
     cursor: pointer;
     padding: 0 4px;
 }
-.eg-delete-btn:hover { color: #900; }
+.eg-delete-btn:hover { color: #911; }
 .eg-manual-add {
     padding: 18px 20px 6px;
     border-top: 1px solid #eee;
@@ -176,8 +176,9 @@ include EQUINENETWORK_GAM_V2_PATH . 'admin/partials/engam-shared-styles.php';
     padding: 7px 10px;
     font-size: 13px;
     border: 1px solid #bbb;
+    border-radius: 6px;
     background: #fff;
     min-width: 200px;
 }
-.eg-manual-input:focus { border-color: #050505; outline: none; }
+.eg-manual-input:focus { border-color: #111; outline: none; }
 </style>
