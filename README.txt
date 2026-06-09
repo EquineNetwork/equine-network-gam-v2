@@ -1,39 +1,48 @@
-=== Plugin Name ===
-Contributors: 
-Requires at least: 3.0.1
-Tested up to: 3.4
-Stable tag: 4.3
+=== EquineNetwork GAM v2 ===
+Contributors: Whitney Mitchell
+Requires at least: 6.0
+Tested up to: 6.7
+Stable tag: 3.4.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
-Here is a short description of the plugin.  This should be no more than 150 characters.  No markup here.
+Inject Google Ad Manager and serve ads dynamically across an Equine Network site — leaderboards, takeovers, carousels, stackers, and Elementor ad slots, driven live from GAM.
 
 == Description ==
 
-This is the long description.  No limit, and you can use Markdown (as well as in the following sections).
+EquineNetwork GAM v2 wires a WordPress site to Google Ad Manager and renders ad
+placements with no manual line-item bookkeeping. It pulls active line items and impressions
+straight from the GAM API (service-account auth) and serves the right creative per
+placement and per page.
 
-For backwards compatibility, if this section is missing, the full length of the short description will be used, and
-Markdown parsed.
+**Placements**
 
-A few notes about the sections above:
+* **Leaderboards** — auto-injected (no Elementor container needed) below the site header, at
+  the top of the footer, into a specific Elementor header/footer template, or halfway down a
+  chosen page ("Half Page").
+* **Takeovers** — full-width **Mastheads** above the header and full-page branded **Wrap**
+  takeovers, each linked to a GAM line item and inheriting its flight dates (only one active
+  at a time).
+* **Carousels** — reusable post/manual carousels with interleaved GAM ad slides, dropped onto
+  any page with a shortcode and optionally scheduled.
+* **Stackers** — a 320×480 in-content slot injected into posts; GAM serves by its own
+  AI-category targeting.
+* **Elementor "EN Ad Slot"** widget with size presets, and a per-post "EN Campaign" sponsor
+  override.
 
-*   "Contributors" is a comma separated list of wp.org/wp-plugins.org usernames
-*   "Tags" is a comma separated list of tags that apply to the plugin
-*   "Requires at least" is the lowest version that the plugin will work on
-*   "Tested up to" is the highest version that you've *successfully used to test the plugin*. Note that it might work on
-higher versions... this is just the highest one you've verified.
-*   Stable tag should indicate the Subversion "tag" of the latest stable version, or "trunk," if you use `/trunk/` for
-stable.
+**Data & integrations**
 
-    Note that the `readme.txt` of the stable tag is the one that is considered the defining one for the plugin, so
-if the `/trunk/readme.txt` file says that the stable tag is `4.3`, then it is `/tags/4.3/readme.txt` that'll be used
-for displaying information about the plugin.  In this situation, the only thing considered from the trunk `readme.txt`
-is the stable tag pointer.  Thus, if you develop in trunk, you can update the trunk `readme.txt` to reflect changes in
-your in-development version, without having that information incorrectly disclosed about the current stable version
-that lacks those changes -- as long as the trunk's `readme.txt` points to the correct stable tag.
+* Live GAM line items + impressions via the Reports API, with 45-minute cron cache warming.
+* Sponsor IDs from a SharePoint / OneDrive spreadsheet (Microsoft Graph or a no-Azure
+  share-link), plus manual entries; one-time migration from legacy ACF sponsor fields.
+* A **Reports** page (impressions by line item) and a guided **Setup Wizard**.
 
-    If no stable tag is provided, it is assumed that trunk is stable, but you should specify "trunk" if that's where
-you put the stable version, in order to eliminate any doubt.
+The admin UI follows Equine Network Brand Guide v1.0. Engineering detail — how the GAM
+integrations actually work and why the obvious approaches failed — lives in
+`docs/gam-integration-notes.md`.
+
+Updates are delivered from the project's GitHub repository via the bundled update checker
+(it tracks the `main` branch); this plugin is not distributed on the WordPress.org directory.
 
 == Installation ==
 
@@ -64,6 +73,46 @@ directory take precedence. For example, `/assets/screenshot-1.png` would win ove
 2. This is the second screen shot
 
 == Changelog ==
+
+= 3.4.0 =
+Brand refresh + two new pages + three behavioral fixes (shipped as one version bump).
+
+* Branding: full admin-UI rebrand to Brand Guide v1.0 — Space Grotesk + IBM Plex Sans
+  fonts, new lime (#C8FF00), 8px rounded cards, softened borders, pastel status badges,
+  light table headers, and the real EN logo icons in every header. Applied through the
+  shared design system (admin/partials/engam-shared-styles.php) so every screen updates
+  together.
+* New: Reports page (EN Ads → Reports) — total GAM impressions (last 90 days) plus an
+  impressions-by-line-item list (sorted high→low, status, "View in GAM"). Uses the
+  AD_SERVER_IMPRESSIONS metric the ad-unit report already fetched.
+* New: Support page (EN Ads → Support) — the Quick Start guide moved off the Dashboard,
+  plus quick links and a contact card. Dashboard now ends cleanly after the placement
+  cards.
+* Fixed (Leaderboards): a leaderboard assigned to a specific Elementor header/footer
+  template now renders ONLY on pages where that template is active. Removed the fallback
+  that injected it after the generic header on every page, which caused duplicate /
+  wrong-page leaderboards. Added a one-leaderboard-per-header guard.
+* Fixed (Takeovers): wrap takeovers now keep their schedule, admin notice bar, and
+  start/stop enforcement working even after the 1-hour line-item cache expires (a durable
+  flight-date store). Previously a wrap could keep serving past its GAM end date on a cold
+  cache, the admin Schedule column went blank, and the front-end bar showed
+  "Now → No end date".
+* Fixed (Carousels): scheduled carousels now appear/disappear at the exact scheduled time
+  even on fully cached (e.g. Kinsta) pages — the schedule is evaluated in the browser at
+  view time. Out-of-schedule carousels no longer request ads. Also fixed a latent bug
+  where WordPress content filters broke inline shortcode scripts (encoding "&&"), which
+  had silently disabled the manual-deactivate container collapse.
+* Removed internal record IDs from the Leaderboards and Takeovers list tables (cleaner UI;
+  IDs still used under the hood).
+
+= 3.3.2 – 3.3.83 =
+Iterative release line (not individually logged here). Highlights: per-site GAM line-item
+detection via the Reports API and 45-min cron cache warming; "Half Page" leaderboard
+placement; Stackers single-card redesign with read-only GAM AI categories; SharePoint /
+OneDrive sponsor-sheet integration (Microsoft Graph + no-Azure share-link path) with a
+worksheet-tab picker; takeover line-item picker with direct GAM-ID lookup and wrap
+auto-expiry from GAM flight dates; ACF sponsor-ID migration; manual sponsor entries; and an
+onboarding setup wizard. Full engineering detail in docs/gam-integration-notes.md.
 
 = 3.3.1 =
 * Added: GAM Line Items panel on the Leaderboards page. Reads the cached line

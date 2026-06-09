@@ -230,6 +230,12 @@ band, then JS moves it into the page body of the targeted page(s).
 | Diagnostics (Test Connection) | `Equinenetwork_Gam_V2_API::diagnose()` → admin AJAX `ajax_test_connection()` |
 | Takeover line‑item picker + GAM‑ID lookup | `admin/partials/engam-takeovers.php` (picker JS) · `Equinenetwork_Gam_V2_API::lookup_line_item()` · AJAX `ajax_lookup_line_item()` (`wp_ajax_engam_v2_lookup_line_item`) |
 | Takeover serve gate + flight‑date auto‑expiry | `public/class-equinenetwork-gam-v2-takeover.php` (`entry_is_live()`, `gam_line_item_flight()`) |
+| Durable flight‑date store (survives cache expiry, §11) | `Equinenetwork_Gam_V2_API::persist_flight_dates()` / `get_flight_dates_durable()` → option `engam_v2_li_flights` |
+| Leaderboard template scoping (§10) | `public/class-equinenetwork-gam-v2-leaderboard.php` (`move()` JS) |
+| Carousel schedule gate + ad‑slot skip (§12) | `public/class-equinenetwork-gam-v2-carousel-shortcode.php` (`gate_scheduled()`) · `public/partials/equinenetwork-gam-v2-public-footer.php` (skip `.engam-car-sched[data-engam-sched-off]`) |
+| Reports / impressions page (§13) | `admin/partials/engam-reports.php` · `Equinenetwork_Gam_V2_API::get_impressions_report()` (option `engam_v2_impressions_report`) |
+| Support page (Quick Start, moved off Dashboard) | `admin/partials/engam-support.php` |
+| Brand design system (§14) | `admin/partials/engam-shared-styles.php` · logo assets `admin/img/en-icon-{dark,light}.png` |
 | Tab name list (XLSX + Graph) | `Equinenetwork_Gam_V2_API::list_worksheet_names()` → `get_ms_link_worksheet_names()` / `get_ms_worksheet_names()` |
 | Tab name AJAX endpoint | `Equinenetwork_Gam_V2_Admin::ajax_ms_tabs()` (`wp_ajax_engam_v2_ms_tabs`) |
 | Sponsor dropdown label format ("Name - id") | `admin/class-equinenetwork-gam-v2-metabox.php::get_campaign_options()` and `public/class-equinenetwork-gam-v2-carousel-render.php::sponsor_options()` |
@@ -265,6 +271,8 @@ actually returning.
 | 3.3.80 | Scoped the merge to the site's ad units via list targeting + inherited GAM flight dates for wrap auto‑expiry. **The scoping silently matched 0** — the list has no targeting (see §9) |
 | 3.3.81 | Added the **full‑list probe** to `diagnose()` (targeting present? dates present? resolving to this site? sample fields) — this is what proved the list returns no targeting/status |
 | 3.3.82 | **Final fix**: dropped list‑based scoping; added **direct GAM‑ID lookup** (`lookup_line_item()`, single `GET`) so not‑yet‑delivered items are wired up by ID and persisted durably; `fetch_line_items()` simplified to report + date backfill + durable manual items (see §9) |
+| 3.3.83 | Onboarding setup wizard (`admin/partials/engam-onboarding.php`) |
+| **3.4.0** | **Brand Guide v1.0 rebrand** (§14); new **Reports** (impressions) page (§13) and **Support** page; **leaderboard template scoping** fix (§10); **takeover durable flight dates** (§11); **carousel cache‑proof scheduling** (§12). One version bump for the whole batch. |
 
 ---
 
@@ -509,3 +517,137 @@ Reported as a gray band between the wrap's background ad and the site header on 
 Fix it in Elementor (clear that container's mobile min‑height / make it desktop‑only). Do
 **not** add a plugin CSS override for it — the rule lives in the theme's header and a
 plugin hack would silently break if the header is rebuilt.
+
+## 10. Leaderboard template scoping (v3.4.0)
+
+**Symptom (reported on Horse&Rider):** a leaderboard assigned to a specific Elementor
+header template (e.g. "Performance Report Header") showed on **every** page — and where a
+generic "Header" leaderboard was also active, **two** leaderboards stacked after the site
+header (duplicate ads).
+
+**Root cause** — the front‑end injector `move()` in
+`public/class-equinenetwork-gam-v2-leaderboard.php`. For a template‑scoped position
+(`header_tmpl_<id>` / `footer_tmpl_<id>`) it looked for the template wrapper
+`.elementor-<id>` on the page; **when that wrapper was absent it fell back to the generic
+`<header>` and injected anyway.** So template scoping was never enforced, and the fallback
+is what stacked duplicates next to a generic‑header leaderboard.
+
+**Fix** — a template‑assigned leaderboard now renders **only** where its template is the
+active header/footer:
+- if `header_tmpl_<id>` and `.elementor-<id>` is **not** on the page → **drop the slot**
+  (`node.remove()`); never fall back to the generic header.
+- a one‑leaderboard‑per‑header/footer guard (`data-engam-lb-done`) so two slots can never
+  stack on the same element.
+- generic `header` / `footer` positions remain a true catch‑all for whoever explicitly
+  picks them. Templates with **no** assignment get nothing.
+
+**Verified** with a synthetic DOM test (active template kept + placed after its header;
+non‑matching template removed; duplicate generic dropped). Real‑Elementor validation still
+wants a staging check.
+
+---
+
+## 11. Takeover flight dates survive cache expiry (v3.4.0)
+
+A *wrap* takeover stores no schedule of its own — it inherits the flight window from its
+linked GAM line item, resolved by `gam_line_item_flight()`, which read **only** the 1‑hour
+`engam_v2_line_items` cache. When that cache expired, three things broke at once:
+
+1. **admin Takeovers list** Schedule column went blank (`— → —`);
+2. **front‑end admin notice bar** showed `Now → No end date` for wraps (it read the wrap's
+   *empty* stored schedule and never inherited the GAM dates — a second, separate bug);
+3. **`entry_is_live()` lost start/stop enforcement** — with no flight to compare against it
+   returned "live", so a wrap could serve **past its GAM end date** (or before its start)
+   any time the cache happened to be cold. (Ad‑delivery correctness, not just display.)
+
+**Fix** — a **durable** last‑known flight‑date store, `engam_v2_li_flights` (an option, not
+a transient), keyed by GAM ID:
+- `Equinenetwork_Gam_V2_API::persist_flight_dates()` merges it on every `fetch_line_items()`
+  and every `lookup_line_item()` (merge, not replace — a line item that drops out of the
+  per‑site list keeps its last‑known dates).
+- `gam_line_item_flight()` falls back to it when the 1‑hour cache is cold.
+- the admin notice bar now inherits the GAM window for wraps; the admin list folds the
+  durable store into its line‑item map.
+
+Still "live from GAM" — the durable copy is just a safety net. **Verified** with a 5‑case
+test (cold cache → flight resolves; in‑flight live; expired NOT live; not‑yet‑started NOT
+live; missing → null) and a live dev check with the transient deleted.
+
+---
+
+## 12. Carousel cache‑proof scheduling (v3.4.0)
+
+**Goal:** drop `[en_carousel id="…"]` on a page; on the schedule **start** it appears, on the
+**end** it disappears (the schedule activates/deactivates it); with no schedule, the manual
+Activate/Deactivate toggle on the list page controls it. `Carousel_Render::is_visible()`
+already implemented exactly that (schedule overrides the manual flag) and the shortcode
+honored it — **server‑side**.
+
+**The catch: full‑page caching (Kinsta).** A server‑side decision is frozen into the cached
+HTML, so the on/off transition lagged until the page cache regenerated.
+
+**Fix — gate scheduled carousels in the browser** (`gate_scheduled()` in
+`public/class-equinenetwork-gam-v2-carousel-shortcode.php`):
+- scheduled carousels render their markup **always**, wrapped in `.engam-car-sched` with the
+  window emitted as **UTC epochs** (`get_gmt_from_date()` → `strtotime`), `style="display:none"`.
+- an inline script compares the viewer's clock (`Date.now()`) to the window: in‑schedule →
+  reveal; out → mark `data-engam-sched-off` and collapse the wrapping Elementor container.
+  Transition now depends on **view time, not cache time**.
+- the footer ad‑init **skips** `.equinenetworkad` inside a `.engam-car-sched[data-engam-sched-off]`
+  wrapper, so an out‑of‑schedule carousel never requests ads. (The gate runs before GPT.)
+- **non‑scheduled** carousels keep server‑side behavior — a manual toggle isn't time‑based, so
+  it legitimately takes effect on the next cache refresh.
+
+**⚠️ Gotcha — `&&` in inline shortcode scripts.** Scripts returned from a shortcode pass
+through WordPress content filters, which **HTML‑encode `&&` to `&#038;&`** → JS syntax error
+("Invalid or unexpected token") → the script silently doesn't run. This had also been
+breaking the original manual‑deactivate container‑collapse script. **Never use `&&` (or other
+raw `&`) in inline scripts emitted by a shortcode** — use nested `if`s / guard clauses. Both
+scripts were rewritten accordingly.
+
+**Verified** end‑to‑end on a real dev front‑end page across all five schedule/active combos.
+
+---
+
+## 13. Reports / impressions page (v3.4.0)
+
+`admin/partials/engam-reports.php` (menu: **EN Ads → Reports**) shows total GAM impressions
+(last 90 days) plus an impressions‑by‑line‑item list (sorted high→low, status badge, "View
+in GAM").
+
+**Where the data comes from:** the ad‑unit report (§1) already requested the
+`AD_SERVER_IMPRESSIONS` metric purely to *detect* which line items run on the site — and
+**threw the number away**. Now `run_ad_unit_report()` captures it per row
+(`report_metric_int()`, tolerant of the v1 `metricValueGroups` and legacy `metricValues`
+shapes) and persists a sorted breakdown + 90‑day total to the option
+`engam_v2_impressions_report`. `get_impressions_report()` reads it for the page, so it
+refreshes whenever the line‑item cache rebuilds (Settings → Refresh Cache, or the cron warm).
+
+**Not yet:** per‑placement‑type impressions (cards are placement *types*; GAM reports by line
+item — would need the report re‑scoped by ad unit + ad‑unit→slot name mapping). The metric
+JSON path should be reconfirmed against a live GAM response (written defensively for now).
+
+---
+
+## 14. Brand foundation — Brand Guide v1.0 (v3.4.0)
+
+A full admin‑UI rebrand, applied through the shared design system so it cascades to every
+screen, with per‑screen inline cleanups on top.
+
+- **Single source of truth:** `admin/partials/engam-shared-styles.php` — the `eg-` design
+  system (CSS custom properties on `#engam-v2-wrap`). Change tokens here, every screen
+  follows.
+- **Tokens:** display font **Space Grotesk**, UI font **IBM Plex Sans** (Google Fonts);
+  lime `#d0ff00` → **`#C8FF00`**; chrome `#111` / `#0d0d0d`; borders **`#E8E8E8`**; surface
+  `#F5F5F5`; **8px** card radius / **6px** input‑button radius; pastel status badges
+  (active `#E8F5C8`, scheduled blue, expired/error `#FDE8E8`); **light table headers** (the
+  black header bars are gone).
+- **Logo:** real EN icon assets `admin/img/en-icon-dark.png` (lime‑on‑black, for the dark
+  mastheads/sidebar) and `en-icon-light.png` (black‑on‑lime, for light surfaces), per the
+  guide's two‑surface rule (header/footer/sidebar stay permanently dark; inner content is
+  white). The masthead `.eg-logo` renders the dark icon.
+- **Two new pages** shipped with it: **Reports** (§13) and **Support** (Quick Start guide
+  moved off the Dashboard + quick links + contact card).
+
+**Dead code:** `admin/partials/equinenetwork-gam-v2-admin-display.php` is unused scaffold
+(not included anywhere — the metabox renders inline in its class). Candidate for deletion.
