@@ -2,7 +2,7 @@
 
 Reference for how the tricky GAM integrations actually work, **why** the obvious
 approaches failed, and the exact request shapes that finally worked. Written after the
-v3.3.37–v3.3.48 work and extended through v3.3.82. If you touch line items, ad‑unit
+v3.3.37–v3.3.48 work and extended through v3.3.84. If you touch line items, ad‑unit
 scoping, the takeover line‑item picker, the stacker AI categories, or the Half Page
 leaderboard, read this first.
 
@@ -509,3 +509,31 @@ Reported as a gray band between the wrap's background ad and the site header on 
 Fix it in Elementor (clear that container's mobile min‑height / make it desktop‑only). Do
 **not** add a plugin CSS override for it — the rule lives in the theme's header and a
 plugin hack would silently break if the header is rebuilt.
+
+---
+
+## 10. Admin notice bar inherits GAM flight dates (v3.3.84)
+
+When a wrap takeover is active but `show_to_admins` is false, logged‑in admins see a
+fixed bottom **notice bar** instead of the full takeover (`TAKEOVER ACTIVE (admins see
+this bar only): … — <start> → <end>`). This lives in the wrap branch of
+`Equinenetwork_Gam_V2_Takeover::render()` (`public/class-equinenetwork-gam-v2-takeover.php`).
+
+**The bug:** the bar formatted its dates from the stored `schedule_start` /
+`schedule_end` fields only. Wraps never store those (only mastheads have schedule
+fields — see §9), so the bar always fell back to its placeholder defaults and read
+`Now → No end date`, even when the takeover admin list's **Schedule** column correctly
+showed the inherited GAM flight window (e.g. `Jun 2, 2026 → Jul 1, 2026`).
+
+**The fix:** resolve the linked GAM line item's flight dates first (via the existing
+`gam_line_item_flight( $gam_id )` helper), falling back to any stored schedule, then to
+the `Now` / `No end date` placeholders. This mirrors the resolution logic already used by
+the admin list's Schedule column (`admin/partials/engam-takeovers.php`, ~line 294), so the
+front‑end bar and the admin list now agree.
+
+- Date format was normalized from `M j, Y g:i a` to `M j, Y` to match the list column.
+- This is **display only** — `entry_is_live()` already inherited the flight window for the
+  active/expiry decision (§9). This change just makes the admin bar's *label* consistent
+  with that logic and with the admin list.
+
+Shipped in PR #49 (branch `claude/serene-babbage-4s317n`).
