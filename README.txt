@@ -2,7 +2,7 @@
 Contributors: Whitney Mitchell
 Requires at least: 6.0
 Tested up to: 6.7
-Stable tag: 3.4.0
+Stable tag: 3.4.2
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -73,6 +73,22 @@ directory take precedence. For example, `/assets/screenshot-1.png` would win ove
 2. This is the second screen shot
 
 == Changelog ==
+
+= 3.4.2 =
+* Sponsor ID's: each row has a one-click copy icon that copies the Sponsor ID to the
+  clipboard (with a "Copied!" confirmation).
+* Mastheads: added a "Show to admins" toggle (Visibility), matching Wrap Takeovers — when
+  off, admins/editors see the front-end notice bar instead of the live masthead. The bar
+  is now a shared helper used by both mastheads and wraps.
+
+= 3.4.1 =
+* Reports: added a Refresh Cache button (masthead + empty state) so impressions can be
+  pulled without going to Settings; made the Status and Impressions columns sortable.
+* Dashboard: top three stat cards are now Total Impressions (90d), GAM Line Items, and
+  Total Ad Placements.
+* Removed the "Delete all data on uninstall" option — uninstall now always preserves plugin
+  data (settings, credentials, saved ads, sponsor IDs). A site that previously had the
+  toggle set to "1" will no longer wipe data now that the control is gone.
 
 = 3.4.0 =
 Brand refresh + two new pages + three behavioral fixes (shipped as one version bump).
