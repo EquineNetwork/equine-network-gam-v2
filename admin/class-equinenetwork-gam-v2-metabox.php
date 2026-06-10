@@ -55,7 +55,7 @@ class Equinenetwork_Gam_V2_Metabox {
 				<select id="engam_v2_sponsor_id_select" class="engam-meta-select">
 					<option value="">— select to fill field below —</option>
 					<?php foreach ( $options as $value => $label ) : ?>
-						<option value="<?php echo esc_attr( $value ); ?>" <?php selected( $current, $value ); ?>>
+						<option value="<?php echo esc_attr( $value ); ?>">
 							<?php echo esc_html( $label ); ?>
 						</option>
 					<?php endforeach; ?>
