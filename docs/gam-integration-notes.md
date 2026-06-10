@@ -273,6 +273,8 @@ actually returning.
 | 3.3.82 | **Final fix**: dropped list‑based scoping; added **direct GAM‑ID lookup** (`lookup_line_item()`, single `GET`) so not‑yet‑delivered items are wired up by ID and persisted durably; `fetch_line_items()` simplified to report + date backfill + durable manual items (see §9) |
 | 3.3.83 | Onboarding setup wizard (`admin/partials/engam-onboarding.php`) |
 | **3.4.0** | **Brand Guide v1.0 rebrand** (§14); new **Reports** (impressions) page (§13) and **Support** page; **leaderboard template scoping** fix (§10); **takeover durable flight dates** (§11); **carousel cache‑proof scheduling** (§12). One version bump for the whole batch. |
+| 3.4.1 | Reports: **Refresh Cache** button + sortable Status/Impressions columns. Dashboard top cards → Total Impressions (90d) / GAM Line Items / Total Ad Placements. Removed the "Delete all data on uninstall" option — `uninstall.php` is now a no‑op that always preserves data (a previously‑set "1" can no longer wipe a site now that the toggle is gone). |
+| 3.4.2 | Sponsor ID's: one‑click copy‑to‑clipboard button per row. **Mastheads** gained a "Show to admins" toggle (`engam_to_mh_show_to_admins`) + the front‑end admin notice bar, at parity with wraps — the bar is now the shared `Equinenetwork_Gam_V2_Takeover::admin_notice_bar()` helper. |
 
 ---
 
