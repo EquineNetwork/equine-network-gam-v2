@@ -12,6 +12,12 @@ class Equinenetwork_Gam_V2_Widget extends \Elementor\Widget_Base {
 				'mobile'  => array( 320, 50 ),
 				'sizes'   => array( array( 320, 50 ), array( 728, 90 ) ),
 			),
+			'super_leaderboard' => array(
+				'label'   => 'Super Leaderboard (728x300 desktop / 320x50 mobile)',
+				'desktop' => array( 728, 300 ),
+				'mobile'  => array( 320, 50 ),
+				'sizes'   => array( array( 320, 50 ), array( 728, 300 ) ),
+			),
 			'medium_rect' => array(
 				'label'   => 'Medium Rectangle (300x250)',
 				'desktop' => array( 300, 250 ),
