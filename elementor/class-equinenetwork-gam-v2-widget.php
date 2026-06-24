@@ -184,7 +184,7 @@ class Equinenetwork_Gam_V2_Widget extends \Elementor\Widget_Base {
 			'label'       => 'Slot Name Override',
 			'type'        => \Elementor\Controls_Manager::TEXT,
 			'placeholder' => 'Optional — e.g. homepagetakeover',
-			'description' => 'For child ad units. Leave blank to use the site GAM Network ID.',
+			'description' => 'For child ad units only — this becomes the GAM ad unit path. Leave blank to use the site GAM Network ID. <strong>Not for sponsor IDs</strong> — to lock this slot to an advertiser, use the Sponsor / Campaign ID picker above.',
 		) );
 
 		$this->end_controls_section();
