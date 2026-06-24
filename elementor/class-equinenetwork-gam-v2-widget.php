@@ -155,16 +155,14 @@ class Equinenetwork_Gam_V2_Widget extends \Elementor\Widget_Base {
 			'default'      => '',
 		) );
 
-		// Build campaign options from the dashboard campaign manager.
-		$campaign_options = array( '' => '— None —' );
-		$stored_campaigns = get_option( 'equinenetwork_gam_v2_campaigns', array() );
-		if ( is_array( $stored_campaigns ) ) {
-			foreach ( $stored_campaigns as $c ) {
-				if ( ! empty( $c['active'] ) ) {
-					$campaign_options[ $c['gam_id'] ] = $c['label'];
-				}
-			}
-		}
+		// Build sponsor options from the connected spreadsheet — the same source the
+		// "Sponsor ID's" admin screen and the carousel widget use. The selected value is
+		// emitted as data-sponsorid and mapped to the GAM `sponlineitemid` targeting key
+		// in the public footer, which is what line items actually serve on.
+		// (Previously this read only the legacy `equinenetwork_gam_v2_campaigns` option,
+		// which is empty on sites driven by the sheet — so the dropdown wrongly showed
+		// "No active campaigns found" even with active sponsors.)
+		$campaign_options = Equinenetwork_Gam_V2_Carousel_Render::sponsor_options();
 
 		if ( count( $campaign_options ) > 1 ) {
 			$this->add_control( 'sponsor_id', array(
@@ -172,13 +170,13 @@ class Equinenetwork_Gam_V2_Widget extends \Elementor\Widget_Base {
 				'type'        => \Elementor\Controls_Manager::SELECT,
 				'options'     => $campaign_options,
 				'default'     => '',
-				'description' => 'Manage campaigns in EN Ads → Campaign Manager.',
+				'description' => 'Optional — lock this slot to a specific advertiser. Manage sponsors in EN Ads → Sponsor ID\'s.',
 			) );
 		} else {
 			$this->add_control( 'sponsor_id', array(
 				'label'       => 'Sponsor / Campaign ID',
 				'type'        => \Elementor\Controls_Manager::RAW_HTML,
-				'raw'         => '<p style="color:#d9534f;font-size:12px;margin:0">No active campaigns found. Add them in <strong>EN Ads → Campaign Manager</strong>.</p>',
+				'raw'         => '<p style="color:#d9534f;font-size:12px;margin:0">No active sponsors found. Add them in <strong>EN Ads → Sponsor ID\'s</strong>.</p>',
 			) );
 		}
 
@@ -186,7 +184,7 @@ class Equinenetwork_Gam_V2_Widget extends \Elementor\Widget_Base {
 			'label'       => 'Slot Name Override',
 			'type'        => \Elementor\Controls_Manager::TEXT,
 			'placeholder' => 'Optional — e.g. homepagetakeover',
-			'description' => 'For child ad units. Leave blank to use the site GAM Network ID.',
+			'description' => 'For child ad units only — this becomes the GAM ad unit path. Leave blank to use the site GAM Network ID. <strong>Not for sponsor IDs</strong> — to lock this slot to an advertiser, use the Sponsor / Campaign ID picker above.',
 		) );
 
 		$this->end_controls_section();
