@@ -275,6 +275,8 @@ actually returning.
 | **3.4.0** | **Brand Guide v1.0 rebrand** (§14); new **Reports** (impressions) page (§13) and **Support** page; **leaderboard template scoping** fix (§10); **takeover durable flight dates** (§11); **carousel cache‑proof scheduling** (§12). One version bump for the whole batch. |
 | 3.4.1 | Reports: **Refresh Cache** button + sortable Status/Impressions columns. Dashboard top cards → Total Impressions (90d) / GAM Line Items / Total Ad Placements. Removed the "Delete all data on uninstall" option — `uninstall.php` is now a no‑op that always preserves data (a previously‑set "1" can no longer wipe a site now that the toggle is gone). |
 | 3.4.2 | Sponsor ID's: one‑click copy‑to‑clipboard button per row. **Mastheads** gained a "Show to admins" toggle (`engam_to_mh_show_to_admins`) + the front‑end admin notice bar, at parity with wraps — the bar is now the shared `Equinenetwork_Gam_V2_Takeover::admin_notice_bar()` helper. |
+| 3.4.3 | Added **Super Leaderboard (728x300 desktop / 320x50 mobile)** ad size to the EN Ad Slot widget presets. |
+| 3.4.4 | **EN Ad Slot sponsor picker fix** (§15): the widget's "Sponsor / Campaign ID" dropdown read the dead `equinenetwork_gam_v2_campaigns` option and showed "No active campaigns found" even with active sponsors. Now reads `Carousel_Render::sponsor_options()` (the connected sponsor sheet), same source as the Sponsor ID's page. Also clarified the Slot Name Override field description ("not for sponsor IDs"). |
 
 ---
 
@@ -653,3 +655,108 @@ screen, with per‑screen inline cleanups on top.
 
 **Dead code:** `admin/partials/equinenetwork-gam-v2-admin-display.php` is unused scaffold
 (not included anywhere — the metabox renders inline in its class). Candidate for deletion.
+
+---
+
+## 15. "The sponsored ad won't show" — full debugging playbook (v3.4.4)
+
+This is the single most common live‑support question: an EN Ad Slot is configured for a
+sponsor but the ad renders blank. It is **almost never the plugin** — the plugin's only job
+is to emit a correct ad request, and the ad fills only if a GAM line item *matches that
+request*. Below is the whole chain, end to end, plus the diagnostics that settle it fast.
+
+### How a sponsored slot actually serves (the data flow)
+
+1. **Admin picks a sponsor** in the EN Ad Slot widget's **Sponsor / Campaign ID** dropdown.
+   Options come from `Carousel_Render::sponsor_options()` → the connected sponsor sheet
+   (the same list the **Sponsor ID's** screen shows). The picked value is a **sponsor ID**
+   like `2026_eq_longform_carecredit`.
+2. The widget renders `<div class="equinenetworkad" … data-sponsorid="2026_eq_longform_carecredit">`.
+   (`elementor/class-equinenetwork-gam-v2-widget.php::render()`.)
+3. The front‑end footer reads it and sets the GAM key‑value:
+   `gamSlot.setTargeting('sponlineitemid', [sponsorID])`
+   (`public/partials/equinenetwork-gam-v2-public-footer.php:191`).
+4. **GAM matches a line item** only when *both* dimensions agree:
+   - **Inventory**: the line item targets the **ad unit the slot requests**, and
+   - **Custom targeting**: the line item's `sponlineitemid` key‑value **includes** that exact value.
+
+So three things must all line up: the **sponsor ID value** (sheet ↔ line‑item key‑value,
+case‑sensitive), the **ad unit** (request ↔ line‑item inventory), and a **delivering** line
+item with the right‑size creative.
+
+### `data-sponsorid` vs `data-slotname` — DO NOT confuse them
+
+This is the #1 user error. They are **different fields with different jobs**:
+
+| Widget field | Emits | Becomes | Purpose |
+|---|---|---|---|
+| **Sponsor / Campaign ID** (dropdown) | `data-sponsorid` | `setTargeting('sponlineitemid', …)` | the key‑value the line item targets |
+| **Slot Name Override** (text) | `data-slotname` | appended to the ad‑unit path: `networkID + '/' + slotname` | the GAM **child ad unit** to request |
+
+If a user types the sponsor ID into **Slot Name Override**, the page requests a bogus ad unit
+like `/22345131513/equus/2026_eq_longform_carecredit` (which doesn't exist) and sends **no**
+`sponlineitemid` — so it can never fill. Sponsor ID → dropdown. Ad‑unit code → Slot Name
+Override. (v3.4.4 added a warning to the field description.)
+
+### Browser diagnostic — what is the page actually requesting?
+
+Paste into the live page's console (type `allow pasting` first if Chrome blocks it):
+
+```js
+googletag.pubads().getSlots().forEach(s =>
+  console.log('SLOT PATH:', s.getAdUnitPath(), '| sponlineitemid:', s.getTargeting('sponlineitemid')));
+```
+
+A correctly‑configured EN Ad Slot prints e.g.
+`SLOT PATH: /22345131513/equus | sponlineitemid: ['2026_eq_longform_carecredit']`.
+- Path ends in `/equus` (root) → **Slot Name Override is blank** (correct for run‑of‑site).
+- Path has the sponsor ID appended → Slot Name Override is wrongly filled. Clear it.
+- `sponlineitemid: []` → no sponsor selected (or override used instead of the dropdown).
+
+To see GAM's *serving decision* (filled vs empty and **why**), add `?dfpdeb` to the URL or
+run `googletag.openConsole()` — the **Google Publisher Console** shows, per slot, the matched
+Line Item ID + Creative ID, or the reason a line item was skipped (inventory / custom
+criteria / not delivering).
+
+### GAM‑side check — the line item's two targeting dimensions
+
+On the line item: **Settings → Add targeting**. Or, fastest, the **Troubleshoot** tab — enter
+the ad unit (`/22345131513/equus`), size (`728x300`), and key‑value
+(`sponlineitemid = <sponsorID>`); it reports eligible/blocked **per dimension**.
+
+### The real‑world case that produced this section (CareCredit on EQUUS, 2026)
+
+The CareCredit longform line item (`6766437066`) was a **TheHorse** line item:
+- custom targeting `sponlineitemid is any of **2024_TH_Longform_CareCredit**` (the 2024 value), and
+- inventory locked to **The Horse** "Special Feature" ad units (`250X30 Logo`,
+  `300x250 Special Feature Med Rectangle`, `728x300 Special Feature Super Leaderboard`).
+
+EQUUS sent `2026_eq_longform_carecredit` to the **`/22345131513/equus`** ad unit — matching
+**neither** dimension, so nothing served (even though the line item showed "Delivering" — it
+was delivering on TheHorse, not EQUUS). A different general‑CareCredit 300x250 *was* rendering
+in the sidebar, which misled us into thinking the longform line item was serving on EQUUS; it
+wasn't (different creative = different line item).
+
+**Fix (entirely GAM‑side):**
+1. **Custom targeting** → added `2026_eq_longform_carecredit` as an OR value on `sponlineitemid`
+   (kept the 2024 value too).
+2. **Inventory** → added the **EQUUS** ad unit. (When searching the ad‑unit picker, the
+   "Inventory filtered based on sizes" filter can hide units that don't carry those exact
+   sizes — click **Undo** on that banner to see all units. EQUUS appeared once the filter was
+   lifted.)
+
+After Save, the **Troubleshoot** tab went green and the live 728x300 filled (verified via
+`?dfpdeb`: Line Item `6766437066`, Creative `138489001685`, size 728x300, status *Displayed*).
+Note: GAM serving lags a targeting save by **~5–15 min** even though Troubleshoot updates
+instantly — don't conclude "still broken" from a refresh seconds after saving.
+
+**Safety note:** targeting the whole EQUUS root ad unit on a Sponsorship line item is fine
+**because** `sponlineitemid` is the AND‑gate — the line item only serves on requests that
+carry that key‑value, i.e. the specific sponsored article, not all of EQUUS.
+
+### Convention going forward
+
+EQUUS sponsorships use `2026_eq_*` sponsor IDs in the sheet. Each new sponsorship needs a GAM
+line item whose `sponlineitemid` includes that value **and** whose inventory includes the
+EQUUS ad unit the slot requests (the `/equus` root for a blank Slot Name Override). Mirror the
+CareCredit setup above.

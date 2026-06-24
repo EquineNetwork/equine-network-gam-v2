@@ -82,6 +82,13 @@ anywhere) — safe to delete.
 - **Impressions** (Reports page + Dashboard "Total Impressions") come from the ad‑unit report
   that runs inside `fetch_line_items()`; it refreshes on the 45‑min cron and on manual Refresh
   Cache, stored in option `engam_v2_impressions_report` (§13).
+- **"Sponsored ad won't show" is almost always a GAM line‑item mismatch, not the plugin.** The
+  widget emits `data-sponsorid` → `setTargeting('sponlineitemid', …)`; the ad fills only if a
+  **delivering** line item targets BOTH the requested ad unit (inventory) AND that exact
+  `sponlineitemid` value (custom targeting). The **Sponsor / Campaign ID dropdown** sets the
+  key‑value; **Slot Name Override** sets the child ad‑unit path — never put a sponsor ID in
+  Slot Name Override. Full debugging playbook (browser + GAM diagnostics, the CareCredit/EQUUS
+  case) is **§15** of the engineering notes.
 
 ## Local dev / test harness
 
