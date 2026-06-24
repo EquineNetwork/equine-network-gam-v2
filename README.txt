@@ -74,6 +74,19 @@ directory take precedence. For example, `/assets/screenshot-1.png` would win ove
 
 == Changelog ==
 
+= 3.4.4 =
+* Fixed: the EN Ad Slot Elementor widget showed "No active campaigns found" in the
+  Sponsor / Campaign ID picker even when the Sponsor ID's screen listed active sponsors.
+  The widget was reading the legacy `equinenetwork_gam_v2_campaigns` option (a defunct
+  Campaign Manager with no admin screen) instead of the connected sponsor sheet. It now
+  pulls the same source as the Sponsor ID's page and the carousel widget, so every active
+  sponsor appears in the dropdown. The selected value is emitted as data-sponsorid and set
+  on the GAM `sponlineitemid` targeting key, which is what line items serve on — so picking
+  a sponsor here (instead of mis-typing it into Slot Name Override) makes the line item match.
+
+= 3.4.3 =
+* Added: Super Leaderboard (728x300 desktop / 320x50 mobile) ad size to the EN Ad Slot widget.
+
 = 3.4.2 =
 * Sponsor ID's: each row has a one-click copy icon that copies the Sponsor ID to the
   clipboard (with a "Copied!" confirmation).
