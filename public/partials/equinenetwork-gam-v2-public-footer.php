@@ -322,6 +322,14 @@ googletag.cmd.push(function() {
 								filledSlot.style.width  = adW + 'px';
 								filledSlot.style.height = adH + 'px';
 								var mastheadWrap = filledSlot.closest('.engam-masthead');
+								// Scale with CSS `zoom`, not `transform: scale()`. A parent
+								// transform scales the slot box but NOT the GPT ad iframe on
+								// some themes (stacking/containment isolates the cross-origin
+								// iframe), leaving the creative full-size and clipped on the
+								// right. `zoom` magnifies the element AND the iframe inside it,
+								// so the whole creative shrinks to fit on every theme. Fall
+								// back to transform only where zoom is unsupported.
+								var useZoom = ( 'zoom' in filledSlot.style );
 								function scaleMasthead() {
 									// Measure against the viewport, not the wrapper. The wrapper
 									// wraps a 2048px-wide ad in overflow:hidden; on some themes it
@@ -332,8 +340,14 @@ googletag.cmd.push(function() {
 									var wrapW = mastheadWrap.offsetWidth || vw;
 									var avail = vw ? Math.min( wrapW, vw ) : wrapW;
 									var scale = avail / adW;
-									filledSlot.style.transform = 'scale(' + scale + ')';
-									mastheadWrap.style.height = Math.round( adH * scale ) + 'px';
+									if ( useZoom ) {
+										// zoom reflows, so let the wrapper size to the zoomed ad.
+										filledSlot.style.zoom = scale;
+										mastheadWrap.style.height = '';
+									} else {
+										filledSlot.style.transform = 'scale(' + scale + ')';
+										mastheadWrap.style.height = Math.round( adH * scale ) + 'px';
+									}
 								}
 								scaleMasthead();
 								// Re-measure after layout settles (header repositioning, late
