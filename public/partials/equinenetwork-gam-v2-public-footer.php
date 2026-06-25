@@ -328,14 +328,17 @@ googletag.cmd.push(function() {
 								filledSlot.style.height = adH + 'px';
 								var mastheadWrap = filledSlot.closest('.engam-masthead');
 								function scaleMasthead() {
-									// Measure against the viewport, not the wrapper. The wrapper
-									// wraps a 2048px-wide ad in overflow:hidden; on some themes it
-									// mis-measures as the creative width (~2048), which would yield
-									// scale≈1 and leave the ad full-size and cropped. Cap by the
-									// real viewport width so the masthead never exceeds the screen.
-									var vw    = document.documentElement.clientWidth || window.innerWidth || 0;
-									var wrapW = mastheadWrap.clientWidth || vw;
-									var avail = vw ? Math.min( wrapW, vw ) : wrapW;
+									// Measure the wrapper's ACTUAL rendered width, then clamp to
+									// the visual viewport. On mobile, document.documentElement
+									// .clientWidth can report the LAYOUT viewport (~980px) rather
+									// than the real ~390px visual width — that under-scaled the
+									// 2048px creative so it overflowed and the overflow:hidden
+									// wrapper clipped it (the black cut-off bar on phones).
+									// getBoundingClientRect().width + window.innerWidth reflect
+									// the real on-screen width on every device.
+									var rectW = mastheadWrap.getBoundingClientRect().width;
+									var vw    = window.innerWidth || document.documentElement.clientWidth || rectW;
+									var avail = Math.min( rectW || vw, vw );
 									if ( avail <= 0 ) return;
 									filledSlot.style.zoom = avail / adW;
 									// zoom reflows the box, so the wrapper self-sizes to the
@@ -345,9 +348,12 @@ googletag.cmd.push(function() {
 								}
 								scaleMasthead();
 								// Re-measure after layout settles (header repositioning, late
-								// reflows) so a first-paint mis-measure self-corrects.
+								// reflows, mobile address-bar resize) so a first-paint
+								// mis-measure self-corrects.
 								setTimeout( scaleMasthead, 250 );
+								setTimeout( scaleMasthead, 1000 );
 								window.addEventListener( 'resize', scaleMasthead );
+								window.addEventListener( 'orientationchange', scaleMasthead );
 							} else if ( !isMasthead ) {
 								// Fixed-size content ad (medium rectangle, half page, etc).
 								// A 300px creative in a narrow column overflows ("flies off
