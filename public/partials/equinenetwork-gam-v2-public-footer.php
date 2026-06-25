@@ -323,11 +323,22 @@ googletag.cmd.push(function() {
 								filledSlot.style.height = adH + 'px';
 								var mastheadWrap = filledSlot.closest('.engam-masthead');
 								function scaleMasthead() {
-									var scale = mastheadWrap.offsetWidth / adW;
+									// Measure against the viewport, not the wrapper. The wrapper
+									// wraps a 2048px-wide ad in overflow:hidden; on some themes it
+									// mis-measures as the creative width (~2048), which would yield
+									// scale≈1 and leave the ad full-size and cropped. Cap by the
+									// real viewport width so the masthead never exceeds the screen.
+									var vw    = document.documentElement.clientWidth || window.innerWidth || 0;
+									var wrapW = mastheadWrap.offsetWidth || vw;
+									var avail = vw ? Math.min( wrapW, vw ) : wrapW;
+									var scale = avail / adW;
 									filledSlot.style.transform = 'scale(' + scale + ')';
 									mastheadWrap.style.height = Math.round( adH * scale ) + 'px';
 								}
 								scaleMasthead();
+								// Re-measure after layout settles (header repositioning, late
+								// reflows) so a first-paint mis-measure self-corrects.
+								setTimeout( scaleMasthead, 250 );
 								window.addEventListener( 'resize', scaleMasthead );
 							} else if ( !isMasthead ) {
 								// Fixed-size content ad (medium rectangle, half page, etc).
