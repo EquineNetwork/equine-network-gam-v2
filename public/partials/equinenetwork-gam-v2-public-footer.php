@@ -315,10 +315,15 @@ googletag.cmd.push(function() {
 						if ( Array.isArray(event.size) ) {
 							var isMasthead = !!filledSlot.closest('.engam-masthead');
 							if ( isMasthead && event.size[0] > 0 ) {
-								// Scale masthead fluid: fill 100% width, preserve aspect ratio.
+								// Scale masthead to fill 100% width, preserve aspect ratio.
+								// Use `zoom`, NOT `transform:scale()`. transform scales the
+								// creative visually but leaves its layout box at native size,
+								// so the overflow:hidden wrapper clips the ad ("PRECISE
+								// NUTRIT…" cropped on the right). zoom reflows the box — the
+								// footprint shrinks with the visual, the wrapper collapses to
+								// the scaled height, and nothing is cropped.
 								var adW = event.size[0];
 								var adH = event.size[1];
-								filledSlot.style.transformOrigin = 'top left';
 								filledSlot.style.width  = adW + 'px';
 								filledSlot.style.height = adH + 'px';
 								var mastheadWrap = filledSlot.closest('.engam-masthead');
@@ -329,11 +334,14 @@ googletag.cmd.push(function() {
 									// scale≈1 and leave the ad full-size and cropped. Cap by the
 									// real viewport width so the masthead never exceeds the screen.
 									var vw    = document.documentElement.clientWidth || window.innerWidth || 0;
-									var wrapW = mastheadWrap.offsetWidth || vw;
+									var wrapW = mastheadWrap.clientWidth || vw;
 									var avail = vw ? Math.min( wrapW, vw ) : wrapW;
-									var scale = avail / adW;
-									filledSlot.style.transform = 'scale(' + scale + ')';
-									mastheadWrap.style.height = Math.round( adH * scale ) + 'px';
+									if ( avail <= 0 ) return;
+									filledSlot.style.zoom = avail / adW;
+									// zoom reflows the box, so the wrapper self-sizes to the
+									// scaled height — clear the explicit height the old
+									// transform approach needed.
+									mastheadWrap.style.height = '';
 								}
 								scaleMasthead();
 								// Re-measure after layout settles (header repositioning, late
