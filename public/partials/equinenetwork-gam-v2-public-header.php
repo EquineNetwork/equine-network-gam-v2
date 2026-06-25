@@ -1,15 +1,21 @@
 <?php if ( ! defined( 'WPINC' ) ) die; ?>
 <style>
-.equinenetworkad iframe {
+/* Cap in-content ads at the leaderboard width — but NOT the masthead,
+   which is a full-width creative (e.g. 2048px) that must fill the bar.
+   Without the :not(), this clipped the masthead to 728px. */
+.equinenetworkad:not(.engam-masthead-ad) iframe {
 	max-width: 728px !important;
 	display: inline-block !important;
+}
+.engam-masthead-ad iframe {
+	max-width: none !important;
 }
 #adModal iframe {
 	max-width: 640px !important;
 	display: inline-block !important;
 }
 @media only screen and (max-width: 728px) {
-	.equinenetworkad iframe {
+	.equinenetworkad:not(.engam-masthead-ad) iframe {
 		max-width: 320px !important;
 		display: inline-block !important;
 	}
