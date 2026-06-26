@@ -113,6 +113,13 @@ anywhere) — safe to delete.
   `is_front_page() || is_home()`, which leaked the masthead onto that blog index. "Homepage"
   targeting should be **`is_front_page()` only** (`masthead_is_targeted()` in
   `public/class-equinenetwork-gam-v2-takeover.php`); other pages go under "Additional Pages".
+- **Targeting/visibility changes need a per‑URL cache purge to take effect.** Takeover HTML is
+  baked into each page's **Kinsta/WP Engine full‑page cache** snapshot, so a change to where an
+  ad shows won't appear (or won't *stop* appearing) until that URL is re‑cached. This also
+  explains "one person sees the ad, another doesn't" on the same URL: logged‑in admins bypass
+  the page cache and get a fresh render, while logged‑out visitors get the cached snapshot —
+  so they can disagree until a purge. After any targeting/activation change, **full cache
+  purge** (not just the homepage) and re‑check logged‑out.
 - **Admin‑only WP functions need their file loaded in front‑end/cron contexts.** `wp_tempnam()`
   (and friends in `wp-admin/includes/file.php`) aren't auto‑loaded outside admin screens —
   guard with `function_exists()` + `require_once ABSPATH . 'wp-admin/includes/file.php'`. This
