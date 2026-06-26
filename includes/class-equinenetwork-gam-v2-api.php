@@ -1470,6 +1470,13 @@ class Equinenetwork_Gam_V2_API {
 		if ( ! class_exists( 'ZipArchive' ) ) {
 			return new WP_Error( 'no_zip', 'This server is missing the PHP Zip extension, so .xlsx files cannot be read. Use the Azure (Microsoft Graph) option instead.' );
 		}
+		// wp_tempnam() lives in wp-admin/includes/file.php, which WordPress only
+		// auto-loads on admin requests. This code also runs on the front end and
+		// from cron (cache warming), where the file isn't loaded — calling it then
+		// fatals with "undefined function wp_tempnam()". Load it on demand.
+		if ( ! function_exists( 'wp_tempnam' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
 		$tmp = wp_tempnam( 'engam-xlsx' );
 		if ( ! $tmp ) return new WP_Error( 'no_tmp', 'Could not create a temporary file to read the spreadsheet.' );
 
