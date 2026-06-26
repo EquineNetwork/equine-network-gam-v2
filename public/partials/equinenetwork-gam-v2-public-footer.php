@@ -316,16 +316,22 @@ googletag.cmd.push(function() {
 							var isMasthead = !!filledSlot.closest('.engam-masthead');
 							if ( isMasthead && event.size[0] > 0 ) {
 								// Scale masthead to fill 100% width, preserve aspect ratio.
-								// Use `zoom`, NOT `transform:scale()`. transform scales the
-								// creative visually but leaves its layout box at native size,
-								// so the overflow:hidden wrapper clips the ad ("PRECISE
-								// NUTRIT…" cropped on the right). zoom reflows the box — the
-								// footprint shrinks with the visual, the wrapper collapses to
-								// the scaled height, and nothing is cropped.
+								// Use `transform:scale()`, NOT `zoom`. iOS Safari (WebKit) does
+								// not reliably apply `zoom` to a cross-origin ad iframe — it left
+								// the masthead a blank black bar on real iPhones (while Chrome's
+								// device-emulation, which uses Chrome's engine, rendered it fine,
+								// masking the bug). `transform` is solidly supported on WebKit.
+								// Because transform doesn't reflow the box, the overflow:hidden
+								// wrapper would still show the un-scaled footprint, so we set the
+								// wrapper height explicitly to the scaled height. (The desktop
+								// right-crop was the 728px iframe max-width cap, fixed separately
+								// — never the scale technique.)
 								var adW = event.size[0];
 								var adH = event.size[1];
+								filledSlot.style.transformOrigin = 'top left';
 								filledSlot.style.width  = adW + 'px';
 								filledSlot.style.height = adH + 'px';
+								filledSlot.style.zoom = '';  // clear any stale zoom from a prior build
 								var mastheadWrap = filledSlot.closest('.engam-masthead');
 								function scaleMasthead() {
 									// Measure the wrapper's ACTUAL rendered width, then clamp to
@@ -340,11 +346,9 @@ googletag.cmd.push(function() {
 									var vw    = window.innerWidth || document.documentElement.clientWidth || rectW;
 									var avail = Math.min( rectW || vw, vw );
 									if ( avail <= 0 ) return;
-									filledSlot.style.zoom = avail / adW;
-									// zoom reflows the box, so the wrapper self-sizes to the
-									// scaled height — clear the explicit height the old
-									// transform approach needed.
-									mastheadWrap.style.height = '';
+									var scale = avail / adW;
+									filledSlot.style.transform = ( scale === 1 ) ? 'none' : ( 'scale(' + scale + ')' );
+									mastheadWrap.style.height = Math.round( adH * scale ) + 'px';
 								}
 								scaleMasthead();
 								// Re-measure after layout settles (header repositioning, late
