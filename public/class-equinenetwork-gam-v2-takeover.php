@@ -237,7 +237,14 @@ class Equinenetwork_Gam_V2_Takeover {
      * Check masthead targeting: show_home or matching page ID.
      */
     private function masthead_is_targeted( $m ) {
-        if ( ! empty( $m['show_home'] ) && ( is_front_page() || is_home() ) ) return true;
+        // "Show on Homepage" = the site's actual front page only. We deliberately
+        // do NOT include is_home(): on sites with a static front page plus a
+        // separate "Posts page" (Settings → Reading), is_home() is true on that
+        // posts index (e.g. /news/), which made the masthead leak onto it. A site
+        // whose homepage IS the blog index still matches via is_front_page(), so
+        // this is front-page-only with no regression. Add other pages explicitly
+        // under "Additional Pages" (the $m['pages'] check below).
+        if ( ! empty( $m['show_home'] ) && is_front_page() ) return true;
         if ( ! empty( $m['pages'] ) && is_singular() ) {
             $id = get_queried_object_id();
             if ( $id && in_array( (int) $id, array_map( 'intval', (array) $m['pages'] ), true ) ) return true;
