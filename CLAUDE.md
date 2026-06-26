@@ -32,6 +32,25 @@ Merging to `main` updates **every** site tracking `main`, not just one. Confirm 
 merging. Commit/PR conventions: end commit messages and PR bodies with the session URL line
 (the harness enforces this).
 
+### Pre‑release checks (do these before merging code changes to `main`)
+
+There is no CI, and the dev harness verifies front‑end rendering but doesn't always exercise
+the **activation / cron** path on a pristine install — which is how the `wp_tempnam()` fatal
+reached a live host (§ that bug: an admin‑only function called in a front‑end/cron context).
+Two cheap checks catch most of this class of issue; **ask the user to run them on the branch
+before merge** (they're interactive desktop/WP.org tools — a headless container can't run
+them):
+
+1. **Plugin Check** (<https://wordpress.org/plugins/plugin-check/>) — flags admin‑only
+   functions used without loading the file, missing escaping/i18n, forbidden functions, etc.
+   Report and resolve any **errors** (warnings: judgement call).
+2. **WP Studio smoke test** — on a fresh local site: **activate the plugin** and load a
+   **front‑end page** + a wp‑admin EN Ads screen. This surfaces activation/cron fatals and
+   white‑screens (like the `wp_tempnam()` one) that pure CSS/markup testing misses.
+
+A **plugin‑SDK** (shipping ~mid‑2026) is expected to streamline this local test/validate loop —
+prefer it once available if it can run in this container.
+
 ## Brand — Brand Guide v1.0
 
 Single source of truth: **`admin/partials/engam-shared-styles.php`** (the `eg-` design system,
