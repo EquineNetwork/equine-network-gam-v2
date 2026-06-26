@@ -14,7 +14,7 @@ a SharePoint/OneDrive spreadsheet (Microsoft Graph or a no‑Azure share link).
 
 Runs on multiple EN sites (Horse&Rider, National Team Roping, The Team Roping Journal, EQUUS…).
 
-- **Current version:** `3.4.10` (set in `equinenetwork-gam-v2.php` — header `Version:` **and**
+- **Current version:** `3.4.12` (set in `equinenetwork-gam-v2.php` — header `Version:` **and**
   the `EQUINENETWORK_GAM_V2_VERSION` constant; keep both in sync).
 - **Dev branch:** `claude/friendly-sagan-2GrGy`.
 
@@ -108,6 +108,15 @@ anywhere) — safe to delete.
 - **Device‑emulation validates layout, not engine behavior.** Chrome/Firefox responsive mode
   uses their own engine, so it cannot reproduce iOS Safari/WebKit rendering bugs. Confirm
   masthead/ad rendering on a **real iPhone** (or BrowserStack), not just responsive mode (§15).
+- **`is_home()` ≠ the front page.** It's true on the WP **"Posts page"** (Settings → Reading),
+  e.g. The Horse's `/news/`. The masthead "Show on Homepage" toggle once matched
+  `is_front_page() || is_home()`, which leaked the masthead onto that blog index. "Homepage"
+  targeting should be **`is_front_page()` only** (`masthead_is_targeted()` in
+  `public/class-equinenetwork-gam-v2-takeover.php`); other pages go under "Additional Pages".
+- **Admin‑only WP functions need their file loaded in front‑end/cron contexts.** `wp_tempnam()`
+  (and friends in `wp-admin/includes/file.php`) aren't auto‑loaded outside admin screens —
+  guard with `function_exists()` + `require_once ABSPATH . 'wp-admin/includes/file.php'`. This
+  is the `wp_tempnam()` activation white‑screen (fixed v3.4.11); Plugin Check flags the class.
 - **Indentation is per‑file**: some files use tabs, some spaces. Match the file you're editing.
 - **GAM flight dates** are resolved through a durable store (`engam_v2_li_flights`) so they
   survive the 1‑hour line‑items cache expiring — don't reintroduce a cache‑only lookup (§11).
