@@ -279,6 +279,8 @@ actually returning.
 | 3.4.8 | **Masthead desktop crop fix (Bug 1):** global `.equinenetworkad iframe{max-width:728px}` cap also matched the masthead and clipped its 2048px creative to 728px. Scoped to `:not(.engam-masthead-ad)` + `max-width:none` for the masthead, base **and** mobile rules (§15). |
 | 3.4.9 | **Masthead mobile under‑scale fix (Bug 2):** scale measured the layout viewport (~980px) not the visual width — under‑scaled and clipped on phones. Use `getBoundingClientRect().width` clamped to `window.innerWidth`; re‑scale on `orientationchange` (§15). |
 | 3.4.10 | **Masthead blank‑on‑iPhone fix (Bug 4, final):** iOS Safari doesn't reliably apply `zoom` to a cross‑origin ad iframe → blank black bar (Chrome emulation hid it). Reverted to `transform:scale()` + explicit wrapper height (§15). |
+| 3.4.11 | **Activation fatal fix:** `wp_tempnam()` (the no‑Azure sponsor‑sheet XLSX reader) is defined in `wp-admin/includes/file.php`, only auto‑loaded on admin requests — it fataled on the front end / cache‑warming cron. Load the file on demand (`function_exists` guard). |
+| 3.4.12 | **Masthead targeting fix:** `masthead_is_targeted()` matched `is_front_page() \|\| is_home()`. `is_home()` is true on the WP **"Posts page"** (Settings → Reading), so a homepage‑only masthead leaked onto the blog index (e.g. The Horse `/news/`). Dropped `is_home()` → "Show on Homepage" = the actual front page only; no regression for sites whose homepage *is* the blog index. |
 
 ---
 
