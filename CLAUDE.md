@@ -14,7 +14,7 @@ a SharePoint/OneDrive spreadsheet (Microsoft Graph or a no‑Azure share link).
 
 Runs on multiple EN sites (Horse&Rider, National Team Roping, The Team Roping Journal, EQUUS…).
 
-- **Current version:** `3.4.2` (set in `equinenetwork-gam-v2.php` — header `Version:` **and**
+- **Current version:** `3.4.10` (set in `equinenetwork-gam-v2.php` — header `Version:` **and**
   the `EQUINENETWORK_GAM_V2_VERSION` constant; keep both in sync).
 - **Dev branch:** `claude/friendly-sagan-2GrGy`.
 
@@ -76,6 +76,19 @@ anywhere) — safe to delete.
   `&&` → `&#038;&`, which is a JS syntax error and the script silently doesn't run. Use nested
   `if`s / guard clauses. (Admin partials are echoed directly and are fine.) See §12 of the
   engineering notes.
+- **`.equinenetworkad` is shared by every ad type** (leaderboards, stackers, carousels,
+  masthead, wrap panels). Any `.equinenetworkad …` CSS is global to all placements — the
+  `max-width:728px` iframe cap in `public/partials/equinenetwork-gam-v2-public-header.php`
+  silently clipped the 2048px **masthead** to 728px until it was scoped with
+  `:not(.engam-masthead-ad)`. Scope per‑type rules with the type's modifier class (§15).
+- **Scale ad iframes with `transform: scale()`, not `zoom`.** iOS Safari (WebKit) doesn't
+  reliably apply `zoom` to a cross‑origin ad iframe — it rendered the masthead as a blank
+  black bar on real iPhones while Chrome device‑emulation showed it fine. The masthead scale
+  lives in `…public-footer.php` (`slotRenderEnded`); it uses `getBoundingClientRect().width`
+  clamped to `window.innerWidth` and sets the wrapper height explicitly (§15).
+- **Device‑emulation validates layout, not engine behavior.** Chrome/Firefox responsive mode
+  uses their own engine, so it cannot reproduce iOS Safari/WebKit rendering bugs. Confirm
+  masthead/ad rendering on a **real iPhone** (or BrowserStack), not just responsive mode (§15).
 - **Indentation is per‑file**: some files use tabs, some spaces. Match the file you're editing.
 - **GAM flight dates** are resolved through a durable store (`engam_v2_li_flights`) so they
   survive the 1‑hour line‑items cache expiring — don't reintroduce a cache‑only lookup (§11).

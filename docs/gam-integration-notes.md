@@ -275,6 +275,10 @@ actually returning.
 | **3.4.0** | **Brand Guide v1.0 rebrand** (§14); new **Reports** (impressions) page (§13) and **Support** page; **leaderboard template scoping** fix (§10); **takeover durable flight dates** (§11); **carousel cache‑proof scheduling** (§12). One version bump for the whole batch. |
 | 3.4.1 | Reports: **Refresh Cache** button + sortable Status/Impressions columns. Dashboard top cards → Total Impressions (90d) / GAM Line Items / Total Ad Placements. Removed the "Delete all data on uninstall" option — `uninstall.php` is now a no‑op that always preserves data (a previously‑set "1" can no longer wipe a site now that the toggle is gone). |
 | 3.4.2 | Sponsor ID's: one‑click copy‑to‑clipboard button per row. **Mastheads** gained a "Show to admins" toggle (`engam_to_mh_show_to_admins`) + the front‑end admin notice bar, at parity with wraps — the bar is now the shared `Equinenetwork_Gam_V2_Takeover::admin_notice_bar()` helper. |
+| 3.4.7 | Masthead scale `transform:scale()` → `zoom` (intended box‑reflow improvement; later reverted — see §15). |
+| 3.4.8 | **Masthead desktop crop fix (Bug 1):** global `.equinenetworkad iframe{max-width:728px}` cap also matched the masthead and clipped its 2048px creative to 728px. Scoped to `:not(.engam-masthead-ad)` + `max-width:none` for the masthead, base **and** mobile rules (§15). |
+| 3.4.9 | **Masthead mobile under‑scale fix (Bug 2):** scale measured the layout viewport (~980px) not the visual width — under‑scaled and clipped on phones. Use `getBoundingClientRect().width` clamped to `window.innerWidth`; re‑scale on `orientationchange` (§15). |
+| 3.4.10 | **Masthead blank‑on‑iPhone fix (Bug 4, final):** iOS Safari doesn't reliably apply `zoom` to a cross‑origin ad iframe → blank black bar (Chrome emulation hid it). Reverted to `transform:scale()` + explicit wrapper height (§15). |
 
 ---
 
@@ -653,3 +657,82 @@ screen, with per‑screen inline cleanups on top.
 
 **Dead code:** `admin/partials/equinenetwork-gam-v2-admin-display.php` is unused scaffold
 (not included anywhere — the metabox renders inline in its class). Candidate for deletion.
+
+---
+
+## 15. Masthead rendering: the cropped/blank banner saga (v3.4.7–v3.4.10)
+
+The homepage masthead (slot `homepagetakeover`, served as a **2048×300** creative) took four
+versions to render correctly on every device. Four *distinct* bugs hid behind the same
+"masthead looks wrong" symptom — fixing one revealed the next. The order of diagnosis matters,
+so the whole chain is recorded here.
+
+### Background: how the masthead scales
+
+`masthead_html()` (`public/class-equinenetwork-gam-v2-takeover.php`) emits
+`<div class="engam-masthead" style="width:100%;overflow:hidden;…">` wrapping a slot div, with
+`data-sizes` defaulting to `[[2048,300]]` on a cold cache (real sizes warmed via the
+`engam_warm_slot_sizes` event). There is **no viewport size mapping** on the masthead, so GAM
+serves the same 2048‑wide creative on every device. The footer ad‑init
+(`public/partials/equinenetwork-gam-v2-public-footer.php`, `slotRenderEnded`) then scales that
+2048px creative down to the wrapper width.
+
+### Bug 1 — desktop right‑crop (v3.4.8, the real first fix)
+
+**Symptom:** "PRECISE NUTRIT…" cut off on the right; wrapper stuck at a fixed height.
+**Cause:** a global rule in `public/partials/equinenetwork-gam-v2-public-header.php`,
+`​.equinenetworkad iframe { max-width: 728px !important }`, meant to cap **in‑content
+leaderboards**, *also* matched the masthead (its wrapper carries the shared `equinenetworkad`
+class) and clamped the 2048px creative to 728px. Confirmed live by unchecking the rule in
+DevTools.
+**Fix:** scope the cap to `.equinenetworkad:not(.engam-masthead-ad)` and add
+`.engam-masthead-ad iframe { max-width: none !important }`, for **both** the base rule and the
+`@media (max-width:728px)` mobile rule (which clamps to 320px).
+
+> **Gotcha:** `.equinenetworkad` is the shared class on *every* ad type (leaderboards,
+> stackers, carousels, masthead, wrap panels). Any `.equinenetworkad …` rule is global to all
+> placements — scope per‑type rules with the type's modifier class (`.engam-masthead-ad`,
+> `.engam-stacker`, `.engam-car`, …) or `:not()`. When an ad is **clipped at native size**
+> (not shrunk), suspect a `max-width`/`width` cap **before** the JS scale technique.
+
+### Bug 2 — mobile under‑scale clip (v3.4.9)
+
+**Symptom:** after Bug 1, fine on desktop but a clipped black bar on phones.
+**Cause:** the scale read `document.documentElement.clientWidth`, which on mobile can report
+the **layout viewport (~980px)** instead of the real **~390px visual width** → the 2048px
+creative was under‑scaled, overflowed, and the `overflow:hidden` wrapper clipped it. (Removing
+the 728px cap *exposed* this — before, the cap accidentally limited the damage.)
+**Fix:** measure `mastheadWrap.getBoundingClientRect().width` and clamp to
+`window.innerWidth` (the true visual viewport on mobile); re‑scale on `resize` /
+`orientationchange` + settle timers.
+
+### Bug 3 — the `zoom` detour (v3.4.7, reverted in v3.4.10)
+
+v3.4.7 switched the scale from `transform:scale()` to **`zoom`**, reasoning that `zoom`
+reflows the box so the `overflow:hidden` wrapper self‑sizes (no manual height, no
+`transform-origin`). This is *true in Chrome* — but see Bug 4. It was never the crop fix
+(Bug 1 was), and it introduced the iOS failure below.
+
+### Bug 4 — blank black bar on real iPhones (v3.4.10, the final fix)
+
+**Symptom:** rendered perfectly in **Chrome device‑emulation** (iPhone preset, 390px:
+`zoom 0.19`, iframe 390×57, full banner) but was a **blank black bar on an actual iPhone**.
+**Cause:** **iOS Safari (WebKit) does not reliably apply CSS `zoom` to a cross‑origin ad
+iframe** — the scaled creative never paints. Chrome's emulation uses Chrome's engine, so it
+**cannot reproduce WebKit rendering bugs** — that gap is exactly what hid this. The "works in
+responsive mode, broken on the device" signature is the tell.
+**Fix:** scale with **`transform: scale()`** (solidly supported on WebKit for iframes), keep
+the robust `getBoundingClientRect()`/`innerWidth` measurement from v3.4.9, and — because
+`transform` does **not** reflow — set the wrapper height explicitly to `adH * scale`.
+
+> **Gotcha (the durable lesson):** **scale ad iframes with `transform: scale()`, not `zoom`.**
+> `zoom` is a WebKit trap for cross‑origin iframes. And **device‑emulation in Chrome/Firefox
+> validates layout, not engine behavior** — a masthead/ad rendering bug must be confirmed on a
+> real iOS Safari device (or BrowserStack), never just responsive mode.
+
+### Current state (v3.4.10)
+
+`transform: scale(avail / adW)` with `transform-origin: top left`; `avail =
+min(getBoundingClientRect().width, window.innerWidth)`; wrapper height set to
+`round(adH * scale)`; re‑scale on `resize` + `orientationchange` + 250ms/1s timers. Verified
+edge‑to‑edge on desktop, Chrome mobile emulation, and a real iPhone.
